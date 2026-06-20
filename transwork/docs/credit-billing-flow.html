@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gressio Credit and Billing Flow</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #647084;
+      --line: #d9dee7;
+      --blue: #1d4ed8;
+      --green: #0f766e;
+      --orange: #b45309;
+      --red: #b91c1c;
+      --shadow: 0 10px 30px rgba(23, 32, 51, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    header {
+      background: #101827;
+      color: #fff;
+      padding: 28px 32px 24px;
+    }
+
+    header h1 {
+      margin: 0 0 8px;
+      font-size: clamp(26px, 4vw, 42px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    header p {
+      max-width: 920px;
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 16px;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+
+    .card {
+      grid-column: span 12;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    @media (min-width: 840px) {
+      .span-4 { grid-column: span 4; }
+      .span-5 { grid-column: span 5; }
+      .span-6 { grid-column: span 6; }
+      .span-7 { grid-column: span 7; }
+      .span-8 { grid-column: span 8; }
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 15px;
+    }
+
+    p { margin: 0 0 10px; }
+
+    .muted { color: var(--muted); }
+
+    .formula {
+      display: block;
+      margin: 10px 0;
+      padding: 12px;
+      border-radius: 8px;
+      background: #eef3ff;
+      color: #15306e;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      overflow-x: auto;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 650;
+      margin-bottom: 6px;
+    }
+
+    input, select {
+      width: 100%;
+      border: 1px solid #c7cfdb;
+      border-radius: 8px;
+      padding: 10px 11px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    input:focus, select:focus {
+      outline: 3px solid rgba(29, 78, 216, 0.18);
+      border-color: var(--blue);
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 14px 0;
+    }
+
+    @media (max-width: 640px) {
+      .field-grid { grid-template-columns: 1fr; }
+      main { padding: 14px; }
+      header { padding: 24px 18px; }
+    }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    @media (max-width: 720px) {
+      .result-grid { grid-template-columns: 1fr; }
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+      min-height: 88px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .metric .value {
+      margin-top: 6px;
+      font-size: 22px;
+      font-weight: 760;
+      overflow-wrap: anywhere;
+    }
+
+    .ok { color: var(--green); }
+    .warn { color: var(--orange); }
+    .bad { color: var(--red); }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .num {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--blue);
+      font-weight: 800;
+    }
+
+    .step strong { display: block; margin-bottom: 3px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.94em;
+      background: #eef0f4;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Gressio Credit and Billing Flow</h1>
+    <p>
+      Interactive map of the current setup: internal quota remains the billing ledger,
+      USD-equivalent value is derived from <code>QuotaPerUnit</code>, and Gressio credits
+      are the user-facing display/input unit at 100 credits per USD-equivalent.
+    </p>
+  </header>
+
+  <main>
+    <section class="grid">
+      <article class="card span-7">
+        <h2>The Current Relationships</h2>
+        <p>
+          The database still stores integer quota units. The server converts those quota
+          units into USD-equivalent value with <code>QuotaPerUnit</code>. Transwork then
+          converts USD-equivalent value into user-facing Gressio credits.
+        </p>
+        <span class="formula">1 USD-equivalent = 500,000 internal quota units</span>
+        <span class="formula">1 USD-equivalent = 100 Gressio credits</span>
+        <span class="formula">1 Gressio credit = 5,000 internal quota units</span>
+        <span class="formula">1 Gressio credit = $0.01 USD-equivalent</span>
+        <span class="formula">1 internal quota unit = 0.0002 credits = $0.000002 USD-equivalent</span>
+        <div class="pill-row">
+          <span class="pill">Core ratio: <code>common.QuotaPerUnit</code></span>
+          <span class="pill">Transwork ratio: <code>CREDITS_PER_USD = 100</code></span>
+          <span class="pill">Balance display floors fractional credits</span>
+        </div>
+      </article>
+
+      <article class="card span-5">
+        <h2>Where It Is Set</h2>
+        <table>
+          <thead>
+            <tr><th>Concern</th><th>Current location</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Quota to USD-equivalent</td>
+              <td><code>common/constants.go</code>: default <code>QuotaPerUnit = 500 * 1000.0</code>. This is also exposed as the server/system quota-per-unit setting.</td>
+            </tr>
+            <tr>
+              <td>Credits per USD-equivalent</td>
+              <td><code>transwork/credits/credits.go</code>: <code>PerUSD = 100</code>; <code>web/default/src/transwork/credits-core.ts</code>: <code>CREDITS_PER_USD = 100</code></td>
+            </tr>
+            <tr>
+              <td>Default web quota formatting</td>
+              <td><code>web/default/src/transwork/credits-core.ts</code> and <code>web/default/src/transwork/credits.ts</code>, wired through <code>web/default/src/lib/format.ts</code> and <code>web/default/src/lib/currency.ts</code></td>
+            </tr>
+            <tr>
+              <td>Desktop profile display</td>
+              <td><code>transwork/handler/auth_check.go</code> returns server-formatted <code>displayQuota</code>; the desktop client displays that value first.</td>
+            </tr>
+            <tr>
+              <td>Billing and insufficient-credit checks</td>
+              <td>Still use internal quota units in <code>service/pre_consume_quota.go</code>, <code>service/quota.go</code>, and model quota updates.</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="card span-6">
+        <h2>Conversion Calculator</h2>
+        <div class="field-grid">
+          <div>
+            <label for="usd">USD-equivalent balance</label>
+            <input id="usd" type="number" min="0" step="0.01" value="49.71">
+          </div>
+          <div>
+            <label for="creditsPerUsd">Credits per USD</label>
+            <input id="creditsPerUsd" type="number" min="1" step="1" value="100">
+          </div>
+          <div>
+            <label for="quotaPerUsd">Quota units per USD</label>
+            <input id="quotaPerUsd" type="number" min="1" step="1" value="500000">
+          </div>
+          <div>
+            <label for="rounding">Displayed credit rounding</label>
+            <select id="rounding">
+              <option value="floor" selected>Floor: never overstate balance</option>
+              <option value="round">Round: nearest integer</option>
+              <option value="ceil">Ceil: can overstate spendable balance</option>
+              <option value="raw">Raw decimals</option>
+            </select>
+          </div>
+        </div>
+        <div class="result-grid">
+          <div class="metric">
+            <div class="label">Internal quota</div>
+            <div class="value" id="quotaOut"></div>
+          </div>
+          <div class="metric">
+            <div class="label">Exact credits</div>
+            <div class="value" id="exactCreditsOut"></div>
+          </div>
+          <div class="metric">
+            <div class="label">Displayed balance</div>
+            <div class="value ok" id="displayCreditsOut"></div>
+          </div>
+        </div>
+        <div class="result-grid">
+          <div class="metric">
+            <div class="label">USD-equivalent per credit</div>
+            <div class="value" id="usdPerCreditOut"></div>
+          </div>
+          <div class="metric">
+            <div class="label">Quota per credit</div>
+            <div class="value" id="quotaPerCreditOut"></div>
+          </div>
+          <div class="metric">
+            <div class="label">Credits per quota unit</div>
+            <div class="value" id="creditsPerQuotaOut"></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card span-6">
+        <h2>Top-Up Calculator</h2>
+        <p class="muted">
+          This models the current top-up path. Payment controllers still work in USD-equivalent
+          purchase units and internal quota. The user-facing credit equivalent is
+          <code>purchased USD-equivalent * 100</code>.
+        </p>
+        <div class="field-grid">
+          <div>
+            <label for="topupUsd">Purchased USD-equivalent units</label>
+            <input id="topupUsd" type="number" min="0" step="1" value="50">
+          </div>
+          <div>
+            <label for="cashPrice">Cash price per USD-equivalent</label>
+            <input id="cashPrice" type="number" min="0" step="0.01" value="1">
+          </div>
+          <div>
+            <label for="groupRatio">Top-up group ratio</label>
+            <input id="groupRatio" type="number" min="0" step="0.01" value="1">
+          </div>
+          <div>
+            <label for="discount">Discount multiplier</label>
+            <input id="discount" type="number" min="0" step="0.01" value="1">
+          </div>
+        </div>
+        <div class="result-grid">
+          <div class="metric">
+            <div class="label">Cash charged</div>
+            <div class="value" id="cashOut"></div>
+          </div>
+          <div class="metric">
+            <div class="label">Quota added</div>
+            <div class="value" id="topupQuotaOut"></div>
+          </div>
+          <div class="metric">
+            <div class="label">Credits displayed</div>
+            <div class="value ok" id="topupCreditsOut"></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card span-6">
+        <h2>Request Charge Calculator</h2>
+        <p class="muted">
+          Billing still calculates actual cost in internal quota units. This simplified
+          calculator starts from USD-equivalent request cost, converts it to quota, and
+          then shows the user-facing credit effect.
+        </p>
+        <div class="field-grid">
+          <div>
+            <label for="startCredits">Starting credits</label>
+            <input id="startCredits" type="number" min="0" step="1" value="4971">
+          </div>
+          <div>
+            <label for="requestUsd">Request USD-equivalent cost</label>
+            <input id="requestUsd" type="number" min="0" step="0.0001" value="0.023">
+          </div>
+          <div>
+            <label for="requestGroupRatio">Usage group ratio</label>
+            <input id="requestGroupRatio" type="number" min="0" step="0.01" value="1">
+          </div>
+          <div>
+            <label for="preconsumeUsd">Pre-consume reserve USD-equivalent</label>
+            <input id="preconsumeUsd" type="number" min="0" step="0.01" value="0.10">
+          </div>
+        </div>
+        <div class="result-grid">
+          <div class="metric">
+            <div class="label">Reserve check</div>
+            <div class="value" id="reserveOut"></div>
+          </div>
+          <div class="metric">
+            <div class="label">Actual deduction</div>
+            <div class="value" id="deductOut"></div>
+          </div>
+          <div class="metric">
+            <div class="label">Remaining display</div>
+            <div class="value" id="remainingOut"></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card span-6">
+        <h2>Insufficient Credit Check</h2>
+        <div class="flow">
+          <div class="step">
+            <div class="num">1</div>
+            <div>
+              <strong>Pre-consume reads user quota.</strong>
+              <span class="muted"><code>service/pre_consume_quota.go</code> checks <code>model.GetUserQuota</code>. This is internal quota, not display credits.</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <div>
+              <strong>If user quota is zero or below, reject.</strong>
+              <span class="muted">The relay returns HTTP 403 with <code>ErrorCodeInsufficientUserQuota</code>. The client may show this as insufficient credits.</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <div>
+              <strong>If balance cannot cover the reserve, reject.</strong>
+              <span class="muted">The comparison is quota-vs-quota. Credits are display math only.</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">4</div>
+            <div>
+              <strong>If allowed, reserve is deducted, then settled.</strong>
+              <span class="muted">Failure refunds quota; success adjusts by actual usage quota. UI displays the resulting quota as credits.</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card span-12">
+        <h2>End-to-End Flow</h2>
+        <div class="flow">
+          <div class="step">
+            <div class="num">A</div>
+            <div>
+              <strong>User chooses a top-up amount.</strong>
+              <span class="muted">
+                Presets come from <code>payment_setting.amount_options</code>. The payment controllers treat the amount as
+                USD-equivalent purchase units for standard providers. The credit equivalent is amount × 100.
+              </span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">B</div>
+            <div>
+              <strong>Server calculates payment cash.</strong>
+              <span class="muted">
+                Epay/Waffo use configured price, top-up group ratio, and optional discount.
+                Stripe has its own unit price path. These settings decide how much real money is charged;
+                they do not change the 100 credits per USD-equivalent display relationship.
+              </span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">C</div>
+            <div>
+              <strong>Payment callback completes the order.</strong>
+              <span class="muted">
+                The pending <code>TopUp</code> row is marked success and the user quota is increased.
+                Most providers add <code>amount * QuotaPerUnit</code>; provider-specific paths can differ.
+                After this, shared formatters display the new quota as credits.
+              </span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">D</div>
+            <div>
+              <strong>Shared user-facing quota display shows credits.</strong>
+              <span class="muted">
+                Web quota formatters and the desktop auth-check display convert
+                <code>quota / QuotaPerUnit * 100</code>. Balance-style display floors the result
+                so the UI does not overstate spendable credits.
+              </span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">E</div>
+            <div>
+              <strong>API usage spends quota.</strong>
+              <span class="muted">
+                Relay billing calculates quota from model price or ratio, token usage, group ratio,
+                and tiered billing rules where configured. Settlement updates user/token quota and logs usage.
+              </span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card span-12">
+        <h2>Important Answer</h2>
+        <p>
+          The Gressio server currently has the core USD-equivalent ratio as a real server setting/constant:
+          <code>QuotaPerUnit</code>. The <strong>100 credits per USD-equivalent</strong> behavior is a Gressio display
+          convention implemented in Transwork overlay helpers and wired into shared display formatters,
+          not a replacement for internal billing quota.
+        </p>
+        <p>
+          Changing <code>QuotaPerUnit</code> changes how much internal quota represents one USD-equivalent.
+          Changing <code>CREDITS_PER_USD</code> changes only the user-facing credit scale. With the current
+          defaults, $49.71 USD-equivalent is 24,855,000 quota units and displays as 4,971 credits.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const nf0 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+    const nf2 = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const nf4 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
+
+    function numberValue(id, fallback) {
+      const value = Number($(id).value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function displayCredits(exact, mode) {
+      if (mode === 'ceil') return Math.ceil(exact);
+      if (mode === 'round') return Math.round(exact);
+      if (mode === 'raw') return exact;
+      return Math.floor(exact);
+    }
+
+    function creditsToQuota(credits, quotaPerUsd, creditsPerUsd) {
+      return credits / creditsPerUsd * quotaPerUsd;
+    }
+
+    function updateConversion() {
+      const usd = numberValue('usd', 0);
+      const quotaPerUsd = numberValue('quotaPerUsd', 500000);
+      const creditsPerUsd = numberValue('creditsPerUsd', 100);
+      const rounding = $('rounding').value;
+      const quota = usd * quotaPerUsd;
+      const exactCredits = usd * creditsPerUsd;
+      const shown = displayCredits(exactCredits, rounding);
+      const usdPerCredit = 1 / creditsPerUsd;
+      const quotaPerCredit = quotaPerUsd / creditsPerUsd;
+      const creditsPerQuota = creditsPerUsd / quotaPerUsd;
+
+      $('quotaOut').textContent = nf0.format(quota);
+      $('exactCreditsOut').textContent = nf4.format(exactCredits);
+      $('displayCreditsOut').textContent = `${rounding === 'raw' ? nf4.format(shown) : nf0.format(shown)} credits`;
+      $('usdPerCreditOut').textContent = `$${nf4.format(usdPerCredit)}`;
+      $('quotaPerCreditOut').textContent = nf0.format(quotaPerCredit);
+      $('creditsPerQuotaOut').textContent = nf4.format(creditsPerQuota);
+    }
+
+    function updateTopup() {
+      const topupUsd = numberValue('topupUsd', 0);
+      const cashPrice = numberValue('cashPrice', 1);
+      const groupRatio = numberValue('groupRatio', 1);
+      const discount = numberValue('discount', 1);
+      const quotaPerUsd = numberValue('quotaPerUsd', 500000);
+      const creditsPerUsd = numberValue('creditsPerUsd', 100);
+
+      const charged = topupUsd * cashPrice * groupRatio * discount;
+      const quota = topupUsd * quotaPerUsd;
+      const credits = Math.floor(topupUsd * creditsPerUsd);
+
+      $('cashOut').textContent = `$${nf2.format(charged)}`;
+      $('topupQuotaOut').textContent = nf0.format(quota);
+      $('topupCreditsOut').textContent = `${nf0.format(credits)} credits`;
+    }
+
+    function updateRequest() {
+      const startCredits = numberValue('startCredits', 0);
+      const requestUsd = numberValue('requestUsd', 0);
+      const groupRatio = numberValue('requestGroupRatio', 1);
+      const reserveUsd = numberValue('preconsumeUsd', 0);
+      const quotaPerUsd = numberValue('quotaPerUsd', 500000);
+      const creditsPerUsd = numberValue('creditsPerUsd', 100);
+
+      const startingQuota = creditsToQuota(startCredits, quotaPerUsd, creditsPerUsd);
+      const reserveQuota = reserveUsd * quotaPerUsd;
+      const actualQuota = requestUsd * groupRatio * quotaPerUsd;
+      const allowed = startingQuota > 0 && startingQuota >= reserveQuota;
+      const remainingQuota = Math.max(0, startingQuota - actualQuota);
+      const remainingCredits = Math.floor((remainingQuota / quotaPerUsd) * creditsPerUsd);
+
+      $('reserveOut').textContent = allowed ? 'Allowed' : '403 blocked';
+      $('reserveOut').className = `value ${allowed ? 'ok' : 'bad'}`;
+      $('deductOut').textContent = `${nf0.format(actualQuota)} quota`;
+      $('remainingOut').textContent = `${nf0.format(remainingCredits)} credits`;
+      $('remainingOut').className = `value ${remainingCredits <= 0 ? 'bad' : remainingCredits < 100 ? 'warn' : 'ok'}`;
+    }
+
+    function updateAll() {
+      updateConversion();
+      updateTopup();
+      updateRequest();
+    }
+
+    document.querySelectorAll('input, select').forEach((el) => {
+      el.addEventListener('input', updateAll);
+      el.addEventListener('change', updateAll);
+    });
+
+    updateAll();
+  </script>
+</body>
+</html>

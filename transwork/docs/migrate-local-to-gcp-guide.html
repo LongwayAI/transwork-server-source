@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Migrate Gressio Server + Logto to Google Cloud (gressio.ai)</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --bg-panel: #1a2028;
+    --bg-code: #0a0e13;
+    --bg-input: #232a33;
+    --fg: #e6edf3;
+    --fg-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-2: #79c0ff;
+    --success: #3fb950;
+    --warning: #d29922;
+    --danger: #f85149;
+    --border: #30363d;
+    --shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  [data-theme="light"] {
+    --bg: #fafbfc;
+    --bg-panel: #ffffff;
+    --bg-code: #f6f8fa;
+    --bg-input: #f0f3f6;
+    --fg: #1f2328;
+    --fg-dim: #656d76;
+    --accent: #0969da;
+    --accent-2: #0a4ea3;
+    --success: #1a7f37;
+    --warning: #9a6700;
+    --danger: #cf222e;
+    --border: #d1d9e0;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.6;
+    transition: background 0.2s, color 0.2s;
+  }
+  .container { max-width: 980px; margin: 0 auto; padding: 24px; }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { margin: 0; font-size: 16px; flex: 1; font-weight: 600; }
+  .progress-wrap { flex: 1; max-width: 280px; }
+  .progress-bar {
+    height: 6px; background: var(--bg-input); border-radius: 3px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--success));
+    width: 0%; transition: width 0.3s;
+  }
+  .progress-label { font-size: 11px; color: var(--fg-dim); margin-top: 2px; text-align: right; }
+  button.btn {
+    background: var(--bg-input); color: var(--fg); border: 1px solid var(--border);
+    padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    transition: background 0.15s;
+  }
+  button.btn:hover { background: var(--border); }
+  h1.title { font-size: 28px; margin: 0 0 8px; font-weight: 700; }
+  p.subtitle { color: var(--fg-dim); margin: 0 0 24px; font-size: 14px; }
+  .architecture {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; margin-bottom: 24px;
+  }
+  .architecture h2 { margin: 0 0 16px; font-size: 16px; color: var(--accent); }
+  .arch-svg { width: 100%; max-width: 100%; height: auto; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px; font-size: 12px; color: var(--fg-dim); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  .step {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    margin-bottom: 16px; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .step.done { border-color: var(--success); }
+  .step-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 20px; cursor: pointer;
+    user-select: none;
+  }
+  .step-header:hover { background: rgba(255,255,255,0.02); }
+  [data-theme="light"] .step-header:hover { background: rgba(0,0,0,0.02); }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--bg-input);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 13px; flex-shrink: 0;
+    border: 1px solid var(--border);
+  }
+  .step.done .step-num { background: var(--success); color: white; border-color: var(--success); }
+  .step.done .step-num::before { content: "✓"; }
+  .step.done .step-num span { display: none; }
+  .step-title { flex: 1; font-weight: 600; font-size: 15px; }
+  .step-time { font-size: 12px; color: var(--fg-dim); }
+  .step-chevron { color: var(--fg-dim); transition: transform 0.2s; font-size: 18px; }
+  .step.open .step-chevron { transform: rotate(90deg); }
+  .step-body {
+    display: none; padding: 0 20px 20px 60px;
+  }
+  .step.open .step-body { display: block; }
+  .step-body p { margin: 8px 0; }
+  .step-body h4 { margin: 16px 0 8px; font-size: 14px; color: var(--accent-2); }
+  .step-body ul, .step-body ol { padding-left: 20px; }
+  .step-body li { margin: 4px 0; }
+  .checklist { list-style: none; padding: 0; margin: 12px 0; }
+  .checklist li {
+    display: flex; align-items: flex-start; gap: 10px; padding: 6px 0;
+  }
+  .checklist input[type="checkbox"] {
+    width: 16px; height: 16px; margin-top: 4px; cursor: pointer; accent-color: var(--success);
+  }
+  .checklist label { cursor: pointer; flex: 1; }
+  .checklist input[type="checkbox"]:checked + label { color: var(--fg-dim); text-decoration: line-through; }
+  .code-block {
+    position: relative; background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: 8px; margin: 10px 0; overflow: hidden;
+  }
+  .code-block pre {
+    margin: 0; padding: 14px 16px; padding-right: 80px;
+    font-family: "SF Mono", Consolas, "Liberation Mono", monospace;
+    font-size: 13px; overflow-x: auto; line-height: 1.5;
+    color: var(--fg);
+  }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--bg-input); color: var(--fg); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    opacity: 0.7; transition: opacity 0.15s;
+  }
+  .code-block:hover .copy-btn { opacity: 1; }
+  .copy-btn.copied { background: var(--success); color: white; border-color: var(--success); }
+  .callout {
+    margin: 12px 0; padding: 12px 14px; border-radius: 8px;
+    border-left: 3px solid var(--accent);
+    background: rgba(88, 166, 255, 0.08);
+    font-size: 14px;
+  }
+  .callout.warning { border-left-color: var(--warning); background: rgba(210, 153, 34, 0.08); }
+  .callout.danger { border-left-color: var(--danger); background: rgba(248, 81, 73, 0.08); }
+  .callout.success { border-left-color: var(--success); background: rgba(63, 185, 80, 0.08); }
+  .callout strong { display: block; margin-bottom: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .callout.warning strong { color: var(--warning); }
+  .callout.danger strong { color: var(--danger); }
+  .callout.success strong { color: var(--success); }
+  .callout.info strong, .callout strong { color: var(--accent); }
+  kbd {
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 4px;
+    padding: 2px 6px; font-family: "SF Mono", Consolas, monospace; font-size: 12px;
+  }
+  code.inline {
+    background: var(--bg-code); padding: 2px 6px; border-radius: 4px;
+    font-family: "SF Mono", Consolas, monospace; font-size: 13px;
+    border: 1px solid var(--border);
+  }
+  a { color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-input); font-weight: 600; }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 500;
+    background: var(--bg-input); border: 1px solid var(--border);
+  }
+  .pill.green { background: rgba(63, 185, 80, 0.15); color: var(--success); border-color: var(--success); }
+  .pill.blue { background: rgba(88, 166, 255, 0.15); color: var(--accent); border-color: var(--accent); }
+  .pill.amber { background: rgba(210, 153, 34, 0.15); color: var(--warning); border-color: var(--warning); }
+  footer { margin: 40px 0 24px; text-align: center; color: var(--fg-dim); font-size: 12px; }
+  .reset-btn { color: var(--danger); background: transparent; border: 1px solid var(--danger); }
+  .reset-btn:hover { background: rgba(248, 81, 73, 0.1); }
+  @media print {
+    header { position: static; }
+    .step-body { display: block !important; }
+    .copy-btn, .reset-btn, button.btn { display: none; }
+  }
+</style>
+</head>
+<body data-theme="dark">
+
+<header>
+  <h1>Gressio → Google Cloud Migration</h1>
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div class="progress-label"><span id="progress-count">0</span> of <span id="progress-total">0</span> done</div>
+  </div>
+  <button class="btn" id="theme-toggle" title="Toggle theme">☀️</button>
+  <button class="btn reset-btn" id="reset-btn" title="Clear all progress">Reset</button>
+</header>
+
+<div class="container">
+
+<h1 class="title">Migrate Gressio-server + Logto from your laptop to Google Cloud</h1>
+<p class="subtitle">
+  Lift-and-shift your two local Docker Compose stacks (Logto + Gressio-server) onto the existing GCP VM
+  <code class="inline">34.142.134.146</code>, behind HTTPS on your <code class="inline">gressio.ai</code> domain. The desktop
+  client stays on your computer — you only re-point it at the cloud. <strong>Fresh start</strong> (no data carried over from
+  the old VM image or your laptop). Estimated total time: 60–120 minutes.
+</p>
+
+<div class="architecture">
+  <h2>What you're building</h2>
+  <svg class="arch-svg" viewBox="0 0 920 440" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#58a6ff"/>
+      </marker>
+      <marker id="arrow-dim" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#8b949e"/>
+      </marker>
+    </defs>
+
+    <!-- Your computer -->
+    <g>
+      <rect x="20" y="170" width="150" height="110" rx="8" fill="#1a2028" stroke="#30363d"/>
+      <text x="95" y="200" text-anchor="middle" fill="#e6edf3" font-size="14" font-weight="600">Your computer</text>
+      <text x="95" y="222" text-anchor="middle" fill="#8b949e" font-size="11">Gressio desktop client</text>
+      <text x="95" y="238" text-anchor="middle" fill="#8b949e" font-size="11">(stays local)</text>
+      <text x="95" y="262" text-anchor="middle" fill="#8b949e" font-size="11">+ system browser</text>
+    </g>
+
+    <!-- VM box -->
+    <g>
+      <rect x="270" y="40" width="630" height="380" rx="12" fill="none" stroke="#58a6ff" stroke-dasharray="6 4" stroke-width="1.5"/>
+      <text x="290" y="65" fill="#58a6ff" font-size="13" font-weight="600">GCP Compute Engine VM · 34.142.134.146</text>
+    </g>
+
+    <!-- Nginx -->
+    <g>
+      <rect x="300" y="90" width="170" height="90" rx="8" fill="#1a2028" stroke="#58a6ff" stroke-width="2"/>
+      <text x="385" y="118" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="600">Nginx (host)</text>
+      <text x="385" y="138" text-anchor="middle" fill="#8b949e" font-size="11">reverse proxy (systemd)</text>
+      <text x="385" y="156" text-anchor="middle" fill="#e6edf3" font-size="11">:80 / :443 (public)</text>
+      <text x="385" y="172" text-anchor="middle" fill="#8b949e" font-size="11">Certbot / Let's Encrypt</text>
+    </g>
+
+    <!-- Gressio-server -->
+    <g>
+      <rect x="300" y="210" width="270" height="90" rx="8" fill="#1a2028" stroke="#3fb950" stroke-width="2"/>
+      <text x="435" y="238" text-anchor="middle" fill="#3fb950" font-size="13" font-weight="600">Gressio-server (new-api)</text>
+      <text x="435" y="258" text-anchor="middle" fill="#e6edf3" font-size="11">internal :3000</text>
+      <text x="435" y="276" text-anchor="middle" fill="#8b949e" font-size="11">+ own Postgres + Redis</text>
+    </g>
+
+    <!-- Logto -->
+    <g>
+      <rect x="610" y="210" width="260" height="170" rx="8" fill="#1a2028" stroke="#d29922" stroke-width="2"/>
+      <text x="740" y="238" text-anchor="middle" fill="#d29922" font-size="13" font-weight="600">Logto</text>
+      <line x1="630" y1="248" x2="850" y2="248" stroke="#30363d"/>
+      <text x="740" y="270" text-anchor="middle" fill="#e6edf3" font-size="11">Core / OIDC · internal :3001</text>
+      <text x="740" y="288" text-anchor="middle" fill="#e6edf3" font-size="11">Admin Console · internal :3002</text>
+      <text x="740" y="312" text-anchor="middle" fill="#8b949e" font-size="11">+ own Postgres</text>
+      <text x="740" y="340" text-anchor="middle" fill="#8b949e" font-size="11">issuer = https://auth.gressio.ai</text>
+    </g>
+
+    <!-- DNS labels -->
+    <g>
+      <text x="490" y="200" text-anchor="middle" fill="#79c0ff" font-size="10">api.gressio.ai</text>
+      <text x="690" y="200" text-anchor="middle" fill="#79c0ff" font-size="10">auth/admin.gressio.ai</text>
+    </g>
+
+    <!-- Arrows -->
+    <line x1="175" y1="210" x2="295" y2="135" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="180" y="170" fill="#58a6ff" font-size="10">HTTPS · API + sign-in</text>
+    <line x1="385" y1="185" x2="420" y2="205" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-dim)"/>
+    <line x1="470" y1="150" x2="690" y2="207" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-dim)"/>
+    <line x1="570" y1="255" x2="608" y2="255" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-dim)"/>
+    <text x="575" y="248" fill="#8b949e" font-size="9">token verify</text>
+  </svg>
+  <div class="legend">
+    <span><i style="background:#58a6ff"></i>Nginx — TLS edge (host + Certbot)</span>
+    <span><i style="background:#3fb950"></i>Gressio-server — redeploy current version</span>
+    <span><i style="background:#d29922"></i>Logto — new on this VM</span>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>Your starting point (assumptions)</strong>
+  This guide assumes: (1) the VM <code class="inline">34.142.134.146</code> already exists, is yours, and currently runs an
+  <em>old</em> Gressio-server via Docker Compose; (2) <code class="inline">api.gressio.ai</code> already resolves to that VM;
+  (3) you own the <code class="inline">gressio.ai</code> DNS zone and can add records; (4) you're doing a <strong>fresh start</strong> —
+  the old server's users/tokens/billing and any local Logto data can be discarded. If any of these is wrong, stop and adjust before
+  running the destructive steps in Step 4.
+</div>
+
+<div class="callout warning">
+  <strong>Why HTTPS, not raw IP</strong>
+  Because you have a real domain, this guide terminates TLS at your host Nginx (certs from Certbot) and serves everything over HTTPS.
+  Logto's OIDC issuer must be a single stable URL, and browsers + the desktop OAuth flow behave far better over HTTPS. The container
+  ports (3000/3001/3002) are published only on <code class="inline">127.0.0.1</code> — Nginx proxies to them, and only its :80/:443 face the internet.
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 1 -->
+<!-- ============================================================ -->
+<div class="step" id="step-1">
+  <div class="step-header" onclick="toggleStep('step-1')">
+    <div class="step-num"><span>1</span></div>
+    <div class="step-title">Plan the DNS names and SSH into the VM</div>
+    <div class="step-time">~10 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>You'll serve three hostnames off the one VM. <code class="inline">api.gressio.ai</code> already points there; add the two Logto names.</p>
+    <table>
+      <thead><tr><th>Hostname</th><th>Proxies to (internal)</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">api.gressio.ai</code></td><td>new-api :3000</td><td>Gressio-server API + web dashboard (already pointed)</td></tr>
+        <tr><td><code class="inline">auth.gressio.ai</code></td><td>logto :3001</td><td>OIDC issuer + the user-facing sign-in page</td></tr>
+        <tr><td><code class="inline">admin.gressio.ai</code></td><td>logto :3002</td><td>Logto admin console (you only)</td></tr>
+      </tbody>
+    </table>
+    <p>In your DNS provider (wherever <code class="inline">gressio.ai</code> is managed), add two <strong>A records</strong> pointing at the VM:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>auth    A    34.142.134.146
+admin   A    34.142.134.146</pre>
+    </div>
+    <div class="callout">
+      <strong>If gressio.ai is behind Cloudflare</strong>
+      Set these two records to <strong>DNS only</strong> (grey cloud), not "Proxied", while you set up Nginx + Certbot. Cloudflare's proxy can
+      interfere with Let's Encrypt's HTTP-01 challenge and with Logto's redirect flow. You can turn the orange cloud back on later if you want.
+    </div>
+    <p>Now SSH in and confirm the existing setup:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>gcloud compute ssh &lt;your-vm-name&gt; --zone=&lt;your-zone&gt;
+# or: ssh your-user@34.142.134.146</pre>
+    </div>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"   # see the old server
+docker --version &amp;&amp; docker compose version                       # confirm Compose v2 is present
+df -h /                                                            # need ~5 GB free
+free -h                                                            # need ~2 GB free RAM</pre>
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c1-1"><label for="c1-1"><code class="inline">auth</code> and <code class="inline">admin</code> A records added (grey cloud if on Cloudflare)</label></li>
+      <li><input type="checkbox" id="c1-2"><label for="c1-2">SSH into the VM works</label></li>
+      <li><input type="checkbox" id="c1-3"><label for="c1-3"><code class="inline">docker compose version</code> shows v2.x; ~5 GB disk and ~2 GB RAM free</label></li>
+      <li><input type="checkbox" id="c1-4"><label for="c1-4">You can see the old <code class="inline">new-api</code> container running</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 2 -->
+<!-- ============================================================ -->
+<div class="step" id="step-2">
+  <div class="step-header" onclick="toggleStep('step-2')">
+    <div class="step-num"><span>2</span></div>
+    <div class="step-title">Open the firewall for HTTP/HTTPS (80 + 443)</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>With Nginx as the only public entry point, you just need ports <span class="pill blue">:80</span> (for Let's Encrypt's challenge + redirect) and <span class="pill blue">:443</span> (HTTPS) open. The app ports 3000/3001/3002 are reached only via <code class="inline">127.0.0.1</code> on the host.</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>gcloud compute firewall-rules create allow-https-gressio \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:80,tcp:443 \
+  --source-ranges=0.0.0.0/0 \
+  --description="Nginx HTTP+HTTPS for gressio.ai"</pre>
+    </div>
+    <div class="callout warning">
+      <strong>Close the old :3000 rule once Nginx HTTPS is live</strong>
+      The old setup likely has port <code class="inline">3000</code> open to the world. Leave it for now so you don't lock yourself out
+      mid-migration, but in Step 11 you'll remove that rule so the only way in is HTTPS through Nginx.
+    </div>
+    <p>Make sure the VM also has a <strong>static external IP</strong> so <code class="inline">34.142.134.146</code> survives a reboot:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>gcloud compute addresses list   # the VM's IP should show TYPE=EXTERNAL, not ephemeral</pre>
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c2-1"><label for="c2-1">Firewall allows tcp:80 + tcp:443 from 0.0.0.0/0</label></li>
+      <li><input type="checkbox" id="c2-2"><label for="c2-2">VM external IP is static (reserved), not ephemeral</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 3 -->
+<!-- ============================================================ -->
+<div class="step" id="step-3">
+  <div class="step-header" onclick="toggleStep('step-3')">
+    <div class="step-num"><span>3</span></div>
+    <div class="step-title">Confirm Nginx and install Certbot</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Your VM already runs host-installed Nginx (that's how <code class="inline">api.gressio.ai</code> is served today). Confirm it's healthy, then install Certbot with the Nginx plugin so it can issue and auto-renew Let's Encrypt certificates.</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>sudo systemctl status nginx --no-pager   # should be "active (running)"
+nginx -v
+sudo nginx -t                            # current config is valid</pre>
+    </div>
+    <p>Install Certbot (Debian/Ubuntu). If it's already present this is a no-op:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>sudo apt update
+sudo apt install -y certbot python3-certbot-nginx</pre>
+    </div>
+    <div class="callout">
+      <strong>No shared Docker network needed</strong>
+      Because Nginx runs on the host (not in a container), it reaches each service over a published <em>localhost</em> port —
+      <code class="inline">proxy_pass http://127.0.0.1:&lt;port&gt;</code>. There's nothing to wire on the Docker side; the containers just
+      publish their ports to <code class="inline">127.0.0.1</code> (Steps 5–6) and Nginx does the rest.
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c3-1"><label for="c3-1">Nginx is active and <code class="inline">nginx -t</code> passes</label></li>
+      <li><input type="checkbox" id="c3-2"><label for="c3-2"><code class="inline">certbot --version</code> works (nginx plugin installed)</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 4 -->
+<!-- ============================================================ -->
+<div class="step" id="step-4">
+  <div class="step-header" onclick="toggleStep('step-4')">
+    <div class="step-num"><span>4</span></div>
+    <div class="step-title">Retire the old server (fresh start)</div>
+    <div class="step-time">~10 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>You chose a fresh start, so the old server's database can go. We'll bring the old stack down and remove its volumes, then deploy the current code in Step 6.</p>
+    <div class="callout danger">
+      <strong>This destroys the old database — confirm first</strong>
+      <code class="inline">docker compose down -v</code> deletes the Postgres/Redis volumes for that project: all old users, tokens, channels,
+      and billing config are <strong>gone permanently</strong>. Only run it if you're certain nothing on the old VM matters. If you're
+      even slightly unsure, take a snapshot first (command below) instead of deleting.
+    </div>
+    <p>Find the old project directory and bring it down:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cd ~/transwork-server      # adjust to wherever the old stack lives
+docker compose ps          # confirm this is the old stack</pre>
+    </div>
+    <p><strong>Optional safety net</strong> — snapshot the old DB volume before wiping (skip if you truly don't care):</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>docker run --rm \
+  -v transwork-server_pg_data:/data \
+  -v $(pwd):/backup alpine \
+  tar czf /backup/old-pg-$(date +%F).tar.gz /data</pre>
+    </div>
+    <p>Now tear it down and remove its volumes:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>docker compose down -v</pre>
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c4-1"><label for="c4-1">(Optional) old DB volume snapshotted</label></li>
+      <li><input type="checkbox" id="c4-2"><label for="c4-2">Old stack stopped, volumes removed</label></li>
+      <li><input type="checkbox" id="c4-3"><label for="c4-3"><code class="inline">docker ps</code> shows no <code class="inline">new-api</code> container running</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 5 -->
+<!-- ============================================================ -->
+<div class="step" id="step-5">
+  <div class="step-header" onclick="toggleStep('step-5')">
+    <div class="step-num"><span>5</span></div>
+    <div class="step-title">Stand up Logto (its own stack)</div>
+    <div class="step-time">~10 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Logto gets its own directory and its own dedicated Postgres, completely separate from Gressio-server. Note the <code class="inline">ENDPOINT</code>/<code class="inline">ADMIN_ENDPOINT</code> are the <em>public HTTPS</em> names — Logto bakes these into its OIDC discovery document, so they must be the real outside URLs, not <code class="inline">localhost</code>.</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>sudo mkdir -p /opt/logto &amp;&amp; sudo chown $USER:$USER /opt/logto
+cd /opt/logto</pre>
+    </div>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cat &gt; docker-compose.yml &lt;&lt;'EOF'
+services:
+  logto:
+    image: svhd/logto:latest
+    container_name: logto
+    restart: unless-stopped
+    depends_on:
+      logto-postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3001:3001"   # Core / OIDC — host Nginx proxies here
+      - "127.0.0.1:3002:3002"   # Admin Console — host Nginx proxies here
+    environment:
+      TRUST_PROXY_HEADER: 1
+      DB_URL: postgres://logto:CHANGE_ME_DB_PASS@logto-postgres:5432/logto
+      ENDPOINT: https://auth.gressio.ai
+      ADMIN_ENDPOINT: https://admin.gressio.ai
+    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
+
+  logto-postgres:
+    image: postgres:16-alpine
+    container_name: logto-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: logto
+      POSTGRES_PASSWORD: CHANGE_ME_DB_PASS
+      POSTGRES_DB: logto
+    volumes:
+      - logto_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logto -d logto"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  logto_pgdata:
+EOF</pre>
+    </div>
+    <div class="callout danger">
+      <strong>Replace the password in both places</strong>
+      Generate a strong one and substitute it for <code class="inline">CHANGE_ME_DB_PASS</code>:
+    </div>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>PASS=$(openssl rand -hex 24)
+sed -i "s/CHANGE_ME_DB_PASS/$PASS/g" docker-compose.yml
+docker compose up -d
+docker compose logs -f logto    # Ctrl-C once you see "Core app is running"</pre>
+    </div>
+    <div class="callout warning">
+      <strong>Ports bound to 127.0.0.1 only</strong>
+      Publishing as <code class="inline">127.0.0.1:3001</code> (not <code class="inline">0.0.0.0:3001</code>) means only the host — i.e. your
+      Nginx — can reach Logto. The ports never face the public internet directly; the only way in is the HTTPS name Nginx serves.
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c5-1"><label for="c5-1"><code class="inline">/opt/logto/docker-compose.yml</code> created with a strong password and the HTTPS endpoints</label></li>
+      <li><input type="checkbox" id="c5-2"><label for="c5-2"><code class="inline">logto</code> and <code class="inline">logto-postgres</code> both running</label></li>
+      <li><input type="checkbox" id="c5-3"><label for="c5-3">From the VM, <code class="inline">curl -sI http://127.0.0.1:3001/oidc/.well-known/openid-configuration</code> returns 200</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 6 -->
+<!-- ============================================================ -->
+<div class="step" id="step-6">
+  <div class="step-header" onclick="toggleStep('step-6')">
+    <div class="step-num"><span>6</span></div>
+    <div class="step-title">Deploy the current Gressio-server</div>
+    <div class="step-time">~15 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>The Gressio-server is built <em>from source</em> using the Transwork overlay compose files (not the upstream <code class="inline">new-api</code> image). Get the current code onto the VM:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cd ~/transwork-server
+git fetch origin
+git log HEAD..origin/main --oneline    # preview what's coming
+git pull origin main</pre>
+    </div>
+    <h4>new-api stays as the repo ships it</h4>
+    <p>Unlike a containerized reverse proxy, host Nginx needs no Docker-network wiring. The base <code class="inline">docker-compose.yml</code> already publishes <code class="inline">3000:3000</code> on the host, and Nginx will proxy to <code class="inline">127.0.0.1:3000</code>. The public firewall rule for :3000 gets removed in Step 11, so the only outside path to the API is HTTPS through Nginx.</p>
+    <div class="callout">
+      <strong>Optional hardening</strong>
+      If you'd rather not have <code class="inline">new-api</code> bound to <code class="inline">0.0.0.0:3000</code> at all (relying only on the
+      firewall), add a one-line override that re-maps the port to <code class="inline">127.0.0.1:3000:3000</code> and include it with an extra
+      <code class="inline">-f</code>. Not required — the firewall change in Step 11 already closes external access.
+    </div>
+    <h4>Fill in the Transwork env file</h4>
+    <p>The overlay needs a Google Cloud Storage service-account key (for batch ASR uploads) and the server-side ElevenLabs key. Copy the example and edit it:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cp transwork/transwork.env.example transwork/transwork.env
+nano transwork/transwork.env
+# Set GCS_BUCKET_NAME and ELEVENLABS_API_KEY; leave IMAGE_TAG as-is.
+# Put the GCS service-account JSON at the path TRANSWORK_GCS_KEY_PATH points to (default ./key.json).</pre>
+    </div>
+    <div class="callout warning">
+      <strong>Never commit secrets</strong>
+      <code class="inline">transwork/transwork.env</code> and <code class="inline">key.json</code> hold credentials. They're for the VM only —
+      do not commit them. (The repo's <code class="inline">.gitignore</code> already excludes the real env file.)
+    </div>
+    <h4>Build and start</h4>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>docker compose \
+  --env-file transwork/transwork.env \
+  -f docker-compose.yml \
+  -f transwork/docker-compose.transwork.yml \
+  up -d --build</pre>
+    </div>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>docker compose logs -f new-api   # Ctrl-C once it reports listening on :3000</pre>
+    </div>
+    <div class="callout">
+      <strong>Save that long command</strong>
+      You'll reuse the exact same <code class="inline">--env-file ... -f docker-compose.yml -f transwork/docker-compose.transwork.yml</code>
+      chain for every future restart or rebuild. Drop it into a one-line shell script (e.g. <code class="inline">/opt/gressio-up.sh</code>) so you don't forget the overlay flags.
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c6-1"><label for="c6-1"><code class="inline">git pull</code> brought the VM up to current <code class="inline">main</code></label></li>
+      <li><input type="checkbox" id="c6-2"><label for="c6-2">From the VM, <code class="inline">curl -sI http://127.0.0.1:3000</code> returns a response</label></li>
+      <li><input type="checkbox" id="c6-3"><label for="c6-3"><code class="inline">transwork/transwork.env</code> filled in; <code class="inline">key.json</code> in place</label></li>
+      <li><input type="checkbox" id="c6-4"><label for="c6-4">Build succeeded; <code class="inline">new-api</code> running and listening on :3000</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 7 -->
+<!-- ============================================================ -->
+<div class="step" id="step-7">
+  <div class="step-header" onclick="toggleStep('step-7')">
+    <div class="step-num"><span>7</span></div>
+    <div class="step-title">Configure Nginx server blocks + issue certs with Certbot</div>
+    <div class="step-time">~15 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Add (or update) one Nginx server block per hostname, each proxying to the matching localhost port, then let Certbot upgrade them to HTTPS. Start with plain HTTP so Certbot's HTTP-01 challenge can succeed on port 80.</p>
+    <div class="callout">
+      <strong>api.gressio.ai may already have a block</strong>
+      Since Nginx already serves <code class="inline">api.gressio.ai</code>, you may only need to <em>add</em> the <code class="inline">auth</code>
+      and <code class="inline">admin</code> blocks and confirm <code class="inline">api</code> proxies to <code class="inline">127.0.0.1:3000</code>.
+      Check <code class="inline">/etc/nginx/sites-enabled/</code> first — don't define the same <code class="inline">server_name</code> twice.
+    </div>
+    <p>Create the site config (HTTP only for now — Certbot adds the TLS lines next):</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>sudo tee /etc/nginx/sites-available/gressio.conf &gt; /dev/null &lt;&lt;'EOF'
+server {
+    listen 80;
+    server_name api.gressio.ai;
+    client_max_body_size 200M;   # desktop app uploads audio for batch ASR
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;          # SSE: stream chat tokens without buffering
+        proxy_read_timeout 3600s;
+    }
+}
+
+server {
+    listen 80;
+    server_name auth.gressio.ai;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name admin.gressio.ai;
+
+    location / {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+EOF</pre>
+    </div>
+    <div class="callout warning">
+      <strong>Two settings that bite if you skip them</strong>
+      <code class="inline">client_max_body_size</code> on <code class="inline">api</code> — Nginx's 1 MB default rejects batch-ASR audio uploads
+      with <code class="inline">413 Request Entity Too Large</code>. And <code class="inline">X-Forwarded-Proto $scheme</code> on every block —
+      Logto (with <code class="inline">TRUST_PROXY_HEADER=1</code>) and new-api rely on it to know the request arrived over HTTPS, otherwise
+      they generate <code class="inline">http://</code> redirect URLs and the OAuth flow breaks.
+    </div>
+    <p>Enable the site and reload:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>sudo ln -sf /etc/nginx/sites-available/gressio.conf /etc/nginx/sites-enabled/gressio.conf
+sudo nginx -t          # must pass
+sudo systemctl reload nginx</pre>
+    </div>
+    <p>Now issue certs for all three names. The nginx plugin edits the config in place to add <code class="inline">listen 443 ssl</code> and an HTTP→HTTPS redirect:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>sudo certbot --nginx \
+  -d api.gressio.ai \
+  -d auth.gressio.ai \
+  -d admin.gressio.ai \
+  --redirect --agree-tos -m you@gressio.ai --no-eff-email</pre>
+    </div>
+    <div class="callout">
+      <strong>Certs need DNS resolving + port 80 reachable</strong>
+      Certbot's HTTP-01 challenge hits <code class="inline">http://&lt;name&gt;/.well-known/acme-challenge/...</code>. If the <code class="inline">auth</code>/<code class="inline">admin</code>
+      A records from Step 1 haven't propagated, issuance fails — <code class="inline">dig auth.gressio.ai +short</code> should return
+      <code class="inline">34.142.134.146</code> first. Renewal is automatic via the installed <code class="inline">certbot.timer</code>; confirm with
+      <code class="inline">sudo certbot renew --dry-run</code>.
+    </div>
+    <p>Smoke-test from your laptop:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>curl -I https://api.gressio.ai
+curl https://auth.gressio.ai/oidc/.well-known/openid-configuration | head
+# issuer should read "https://auth.gressio.ai"</pre>
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c7-1"><label for="c7-1">Three server blocks enabled; <code class="inline">nginx -t</code> passes</label></li>
+      <li><input type="checkbox" id="c7-2"><label for="c7-2">Certbot issued certs for api/auth/admin; HTTP→HTTPS redirect active</label></li>
+      <li><input type="checkbox" id="c7-3"><label for="c7-3"><code class="inline">https://api.gressio.ai</code> loads the dashboard; discovery doc issuer is <code class="inline">https://auth.gressio.ai</code></label></li>
+      <li><input type="checkbox" id="c7-4"><label for="c7-4"><code class="inline">sudo certbot renew --dry-run</code> succeeds</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 8 -->
+<!-- ============================================================ -->
+<div class="step" id="step-8">
+  <div class="step-header" onclick="toggleStep('step-8')">
+    <div class="step-num"><span>8</span></div>
+    <div class="step-title">Logto first-run + register the Gressio-server app</div>
+    <div class="step-time">~10 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Open the admin console at <code class="inline">https://admin.gressio.ai</code>. Logto walks you through creating the first admin account (one-time bootstrap — self-hosted Logto has no password reset, so store it in a vault).</p>
+    <h4>Create the application</h4>
+    <p><strong>Applications → Create application</strong>:</p>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Application type</td><td><span class="pill blue">Traditional web</span> (Gressio-server does the server-side token exchange)</td></tr>
+        <tr><td>Name</td><td><code class="inline">Gressio Server</code></td></tr>
+      </tbody>
+    </table>
+    <h4>Redirect URIs</h4>
+    <p>Add both (exact match — these are compared character-for-character):</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>https://api.gressio.ai/api/desktop-login/callback
+https://api.gressio.ai/oauth/oidc</pre>
+    </div>
+    <ul>
+      <li>First — the <strong>desktop client</strong> flow. Gressio-server builds this from its Server Address (Step 9) as <code class="inline">&lt;ServerAddress&gt;/api/desktop-login/callback</code>, then bounces the browser to the app's loopback.</li>
+      <li>Second — the <strong>web dashboard</strong> sign-in, if any user logs into <code class="inline">api.gressio.ai</code> via browser.</li>
+    </ul>
+    <h4>Post sign-out redirect URI</h4>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>https://api.gressio.ai/</pre>
+    </div>
+    <h4>Sign-up experience (email + password only)</h4>
+    <p><strong>Sign-in experience → Sign-up and sign-in</strong>: set sign-up identifier to <span class="pill green">Email address</span> (uncheck Username), authentication <span class="pill green">Create your password</span>, no social connectors. Save.</p>
+    <h4>Copy these for Step 9</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c8-1"><label for="c8-1">Logto admin account created and saved in a vault</label></li>
+      <li><input type="checkbox" id="c8-2"><label for="c8-2">Application created with <strong>both</strong> redirect URIs</label></li>
+      <li><input type="checkbox" id="c8-3"><label for="c8-3">App ID (Client ID) copied</label></li>
+      <li><input type="checkbox" id="c8-4"><label for="c8-4">App Secret (Client Secret) copied</label></li>
+      <li><input type="checkbox" id="c8-5"><label for="c8-5">Sign-up set to email + password only</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 9 -->
+<!-- ============================================================ -->
+<div class="step" id="step-9">
+  <div class="step-header" onclick="toggleStep('step-9')">
+    <div class="step-num"><span>9</span></div>
+    <div class="step-title">Point Gressio-server at Logto + set the Server Address</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Log into <code class="inline">https://api.gressio.ai</code> as the Gressio root admin. Two things to set.</p>
+    <h4>A. Server Address</h4>
+    <p><strong>System Settings → General → Server Address</strong>:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>https://api.gressio.ai</pre>
+    </div>
+    <div class="callout warning">
+      <strong>This is load-bearing for desktop login</strong>
+      The server builds the OAuth <code class="inline">redirect_uri</code> as <code class="inline">&lt;Server Address&gt;/api/desktop-login/callback</code>
+      and must send the <em>identical</em> value at both the authorize and token-exchange steps. If Server Address is wrong (e.g. still
+      <code class="inline">http://...:3000</code>), Logto rejects the redirect and the desktop sign-in fails with <code class="inline">exchange_failed</code>.
+    </div>
+    <h4>B. OIDC settings</h4>
+    <p><strong>System Settings → OAuth → OIDC</strong> (Chinese UI: <strong>OIDC 登录</strong>):</p>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Enable OIDC</td><td><span class="pill green">ON</span></td></tr>
+        <tr><td>Client ID</td><td><em>App ID from Step 8</em></td></tr>
+        <tr><td>Client Secret</td><td><em>App Secret from Step 8</em> (no stray whitespace)</td></tr>
+        <tr><td>Authorization Endpoint</td><td><code class="inline">https://auth.gressio.ai/oidc/auth</code></td></tr>
+        <tr><td>Token Endpoint</td><td><code class="inline">https://auth.gressio.ai/oidc/token</code></td></tr>
+        <tr><td>UserInfo Endpoint</td><td><code class="inline">https://auth.gressio.ai/oidc/me</code></td></tr>
+        <tr><td>Scopes</td><td><code class="inline">openid profile email</code></td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <strong>"Fetch from discovery" shortcut</strong>
+      If the OIDC settings page has a discovery button, paste <code class="inline">https://auth.gressio.ai/oidc/.well-known/openid-configuration</code>
+      and let it auto-fill the three endpoints. Confirm registration is enabled too — the desktop handler only auto-creates a new user when registration is on.
+    </div>
+    <p>Save. Re-check that the toggle persisted (it sometimes needs a second Save).</p>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c9-1"><label for="c9-1">Server Address = <code class="inline">https://api.gressio.ai</code></label></li>
+      <li><input type="checkbox" id="c9-2"><label for="c9-2">OIDC enabled, Client ID + Secret pasted</label></li>
+      <li><input type="checkbox" id="c9-3"><label for="c9-3">All three endpoints use <code class="inline">https://auth.gressio.ai</code></label></li>
+      <li><input type="checkbox" id="c9-4"><label for="c9-4">Registration enabled; settings saved</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 10 -->
+<!-- ============================================================ -->
+<div class="step" id="step-10">
+  <div class="step-header" onclick="toggleStep('step-10')">
+    <div class="step-num"><span>10</span></div>
+    <div class="step-title">Point the desktop client at the cloud (baked-in URL)</div>
+    <div class="step-time">~10 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>How the client finds the server changed with the recent dev-mode / locked-down-config work. The production server URL is now <strong>compiled into the binary</strong> — it's no longer read from a config file on the end user's machine.</p>
+    <div class="callout success">
+      <strong>A release build needs no per-machine config</strong>
+      The constant <code class="inline">PRODUCTION_SERVER_BASE_URL</code> in <code class="inline">src-tauri/src/config/mod.rs</code> is baked in and
+      already set to <code class="inline">https://api.gressio.ai</code>. Release builds ship <em>without</em> <code class="inline">api_keys.toml</code>,
+      and the embedded <code class="inline">default_config.json</code> already routes through the server relay (<code class="inline">routingMode = transwork_server</code>,
+      <code class="inline">provider = elevenlabs</code>, <code class="inline">useTransworkServer = true</code>). So once a user installs the build and
+      signs in, the client talks to your cloud automatically — nothing to edit on their machine.
+    </div>
+
+    <h4>A. Release build (production / end users)</h4>
+    <p>The only "re-pointing" knob is the compiled constant. Confirm it matches this deployment:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>// transwork/src-tauri/src/config/mod.rs
+pub const PRODUCTION_SERVER_BASE_URL: &amp;str = "https://api.gressio.ai";</pre>
+    </div>
+    <p>It already reads <code class="inline">https://api.gressio.ai</code>, so just build and distribute the installer:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cd transwork
+npm run tauri build</pre>
+    </div>
+    <div class="callout warning">
+      <strong>Changing the domain later means a rebuild, not a config edit</strong>
+      Because the URL is compiled in and release builds don't read <code class="inline">api_keys.toml</code> (its load path resolves to the
+      build machine's source tree, which doesn't exist on a user's install), you can't re-point a shipped client by dropping a config file
+      next to it. To move domains, edit the constant and ship a new build. Also update <code class="inline">PRODUCTION_OPENCODE_MODEL</code> in
+      the same file if the agent model changes.
+    </div>
+
+    <h4>B. Dev build pointing at the cloud (testing from source)</h4>
+    <p>If you're running <code class="inline">npm run tauri dev</code> against the cloud, set <code class="inline">dev_mode = true</code> at the top of the
+    git-ignored <code class="inline">transwork/api_keys.toml</code>. That unlocks the full Settings UI and makes the canonical
+    <code class="inline">config.json</code> editable. The server URL already defaults to the baked production value, so overrides are optional:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre># transwork/api_keys.toml
+dev_mode = true
+
+[asr.elevenlabs]
+# Optional — defaults to the baked PRODUCTION_SERVER_BASE_URL already.
+# server_base_url = "https://api.gressio.ai"
+# user_token = ""        # leave empty; the login token comes from the keyring
+
+[opencode]
+use_transwork_server = true
+# server_base_url = "https://api.gressio.ai"   # optional override</pre>
+    </div>
+    <div class="callout">
+      <strong>Token comes from sign-in, not the file</strong>
+      Leave <code class="inline">user_token</code> empty in either mode. After "Sign in with browser", the 90-day desktop token lives in
+      Windows Credential Manager and is used automatically — <code class="inline">api_keys.toml</code> never carries it.
+    </div>
+
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c10-1"><label for="c10-1">Release: <code class="inline">PRODUCTION_SERVER_BASE_URL</code> in <code class="inline">config/mod.rs</code> equals <code class="inline">https://api.gressio.ai</code></label></li>
+      <li><input type="checkbox" id="c10-2"><label for="c10-2">Release: installer built with <code class="inline">npm run tauri build</code> (no <code class="inline">api_keys.toml</code> shipped)</label></li>
+      <li><input type="checkbox" id="c10-3"><label for="c10-3">Dev only: <code class="inline">dev_mode = true</code> set in <code class="inline">api_keys.toml</code> if running from source</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 11 -->
+<!-- ============================================================ -->
+<div class="step" id="step-11">
+  <div class="step-header" onclick="toggleStep('step-11')">
+    <div class="step-num"><span>11</span></div>
+    <div class="step-title">End-to-end test, lockdown, and backups</div>
+    <div class="step-time">~15 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <h4>Sign-in test</h4>
+    <ol>
+      <li>Open the desktop client. Click <strong>Sign in with browser</strong>.</li>
+      <li>System browser opens to <code class="inline">https://auth.gressio.ai/oidc/auth?...</code> → Logto sign-in screen.</li>
+      <li>Click <strong>Create account</strong>, enter email + password, submit.</li>
+      <li>Browser redirects through <code class="inline">https://api.gressio.ai/api/desktop-login/callback</code> → then to the app's <code class="inline">http://127.0.0.1:&lt;port&gt;/desktop-login/callback</code> loopback.</li>
+      <li>Desktop app comes forward, signed in. Profile shows your email. Initial quota is 0, so you'll see the invite gate next.</li>
+    </ol>
+    <h4>Grant initial quota</h4>
+    <p>In the Gressio dashboard: <strong>Redemption → Create</strong>, set a quota, copy the code, paste it into the desktop invite-gate input → Activate.</p>
+    <h4>If something breaks</h4>
+    <table>
+      <thead><tr><th>Symptom</th><th>Check</th></tr></thead>
+      <tbody>
+        <tr><td>Browser can't reach <code class="inline">auth.gressio.ai</code></td><td>Step 1 DNS not propagated, or Step 7 cert not issued. <code class="inline">dig auth.gressio.ai +short</code>; <code class="inline">sudo tail -f /var/log/nginx/error.log</code>; <code class="inline">sudo certbot certificates</code>.</td></tr>
+        <tr><td>"Invalid redirect URI" on Logto</td><td>Step 8 — the URI in the request must exactly match a registered one. Confirm Server Address (Step 9A) is <code class="inline">https://api.gressio.ai</code>.</td></tr>
+        <tr><td>Sign-in works but app shows <code class="inline">exchange_failed</code></td><td>Step 9 — Client Secret has whitespace, or Token Endpoint typo'd, or Server Address ≠ what's registered in Logto.</td></tr>
+        <tr><td>Client talks to the wrong / old server</td><td>Release: built with a stale <code class="inline">PRODUCTION_SERVER_BASE_URL</code> — fix the constant (Step 10A) and rebuild. Dev: a stale canonical <code class="inline">config.json</code> in <code class="inline">%APPDATA%/Gressio</code> — delete it to regenerate from defaults.</td></tr>
+        <tr><td>Desktop app: "no server_base_url configured"</td><td>Dev only, when <code class="inline">api_keys.toml</code> exists but both <code class="inline">server_base_url</code> values were emptied. Release builds use the baked URL and never hit this.</td></tr>
+        <tr><td>Batch ASR upload fails / <code class="inline">413</code></td><td>Step 7 — <code class="inline">client_max_body_size</code> missing or too small on the <code class="inline">api</code> server block. Bump it and reload Nginx.</td></tr>
+        <tr><td>Discovery doc still says <code class="inline">localhost</code></td><td>Step 5 — <code class="inline">ENDPOINT</code> not applied. <code class="inline">cd /opt/logto &amp;&amp; docker compose up -d --force-recreate logto</code>.</td></tr>
+      </tbody>
+    </table>
+    <h4>Lock down the old port</h4>
+    <p>Now that HTTPS works, remove the old public :3000 rule so the only entry is Nginx:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>gcloud compute firewall-rules list                       # find the old rule's name
+gcloud compute firewall-rules delete &lt;old-3000-rule&gt;     # confirm before deleting</pre>
+    </div>
+    <div class="callout warning">
+      <strong>Optional: restrict the admin console</strong>
+      <code class="inline">admin.gressio.ai</code> is internet-reachable (password-protected, but still). To limit it to your IP, add
+      <code class="inline">allow YOUR.IP;</code> then <code class="inline">deny all;</code> inside the <code class="inline">location /</code> of the
+      <code class="inline">admin.gressio.ai</code> server block, then <code class="inline">sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code>.
+    </div>
+    <h4>Daily backups</h4>
+    <p>Two databases now: Gressio-server's Postgres (users/tokens/billing) and Logto's Postgres (identities). Snapshot both nightly:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cat &gt; /opt/backup.sh &lt;&lt;'EOF'
+#!/bin/bash
+set -e
+DEST=/opt/backups; mkdir -p $DEST
+DATE=$(date +%F-%H%M)
+docker exec postgres pg_dumpall -U root | gzip &gt; $DEST/gressio-$DATE.sql.gz
+docker exec logto-postgres pg_dumpall -U logto | gzip &gt; $DEST/logto-$DATE.sql.gz
+find $DEST -name "*.sql.gz" -mtime +14 -delete
+EOF
+chmod +x /opt/backup.sh
+(crontab -l 2&gt;/dev/null; echo "0 3 * * * /opt/backup.sh") | crontab -</pre>
+    </div>
+    <div class="callout">
+      <strong>Adjust the container/user names</strong>
+      <code class="inline">postgres</code> / <code class="inline">root</code> are the defaults from the server's compose; <code class="inline">logto-postgres</code> / <code class="inline">logto</code> match Step 5. Run <code class="inline">docker ps</code> to confirm the actual names before trusting the cron.
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c11-1"><label for="c11-1">Desktop sign-up completes end-to-end over HTTPS</label></li>
+      <li><input type="checkbox" id="c11-2"><label for="c11-2">Profile shows your email; quota redemption works</label></li>
+      <li><input type="checkbox" id="c11-3"><label for="c11-3">Old public :3000 firewall rule removed</label></li>
+      <li><input type="checkbox" id="c11-4"><label for="c11-4">Backup script created and cron scheduled (names verified)</label></li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Migration guide · local Docker Compose → GCP VM <code class="inline">34.142.134.146</code> · HTTPS on <code class="inline">gressio.ai</code> · fresh start.
+  Progress is saved in your browser's localStorage — switching browsers resets it. Companion doc: <code class="inline">deploy-logto-alpha-guide.html</code> (raw-IP variant).
+</footer>
+
+</div>
+
+<script>
+  const STORAGE_KEY = "gressio-gcp-migration-v1";
+
+  function loadState() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
+    catch { return {}; }
+  }
+  function saveState(s) { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+  const state = loadState();
+
+  function toggleStep(id) {
+    const el = document.getElementById(id);
+    el.classList.toggle("open");
+    state[id + "_open"] = el.classList.contains("open");
+    saveState(state);
+  }
+
+  function updateProgress() {
+    const checks = document.querySelectorAll('.checklist input[type="checkbox"]');
+    const done = Array.from(checks).filter(c => c.checked).length;
+    const pct = checks.length ? (done / checks.length) * 100 : 0;
+    document.getElementById("progress").style.width = pct + "%";
+    document.getElementById("progress-count").textContent = done;
+    document.getElementById("progress-total").textContent = checks.length;
+
+    document.querySelectorAll(".step").forEach(step => {
+      const stepChecks = step.querySelectorAll('.checklist input[type="checkbox"]');
+      if (stepChecks.length === 0) return;
+      const allDone = Array.from(stepChecks).every(c => c.checked);
+      step.classList.toggle("done", allDone);
+    });
+  }
+
+  function copyCode(btn) {
+    const pre = btn.parentElement.querySelector("pre");
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+      const old = btn.textContent;
+      btn.textContent = "Copied!";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = old; btn.classList.remove("copied"); }, 1200);
+    });
+  }
+
+  document.querySelectorAll('.checklist input[type="checkbox"]').forEach(cb => {
+    if (state[cb.id]) cb.checked = true;
+    cb.addEventListener("change", () => {
+      state[cb.id] = cb.checked;
+      saveState(state);
+      updateProgress();
+    });
+  });
+
+  document.querySelectorAll(".step").forEach(step => {
+    if (state[step.id + "_open"]) step.classList.add("open");
+  });
+  if (Object.keys(state).length === 0) {
+    document.getElementById("step-1").classList.add("open");
+  }
+
+  const themeBtn = document.getElementById("theme-toggle");
+  function applyTheme(t) {
+    document.body.dataset.theme = t;
+    themeBtn.textContent = t === "dark" ? "☀️" : "🌙";
+    state.theme = t;
+    saveState(state);
+  }
+  applyTheme(state.theme || "dark");
+  themeBtn.addEventListener("click", () => applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark"));
+
+  document.getElementById("reset-btn").addEventListener("click", () => {
+    if (confirm("Clear all progress and collapse all sections?")) {
+      localStorage.removeItem(STORAGE_KEY);
+      location.reload();
+    }
+  });
+
+  updateProgress();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gressio Alpha Deployment — Logto + Gressio-server on GCP VM</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --bg-panel: #1a2028;
+    --bg-code: #0a0e13;
+    --bg-input: #232a33;
+    --fg: #e6edf3;
+    --fg-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-2: #79c0ff;
+    --success: #3fb950;
+    --warning: #d29922;
+    --danger: #f85149;
+    --border: #30363d;
+    --shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  [data-theme="light"] {
+    --bg: #fafbfc;
+    --bg-panel: #ffffff;
+    --bg-code: #f6f8fa;
+    --bg-input: #f0f3f6;
+    --fg: #1f2328;
+    --fg-dim: #656d76;
+    --accent: #0969da;
+    --accent-2: #0a4ea3;
+    --success: #1a7f37;
+    --warning: #9a6700;
+    --danger: #cf222e;
+    --border: #d1d9e0;
+    --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.6;
+    transition: background 0.2s, color 0.2s;
+  }
+  .container { max-width: 980px; margin: 0 auto; padding: 24px; }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { margin: 0; font-size: 16px; flex: 1; font-weight: 600; }
+  .progress-wrap { flex: 1; max-width: 280px; }
+  .progress-bar {
+    height: 6px; background: var(--bg-input); border-radius: 3px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--success));
+    width: 0%; transition: width 0.3s;
+  }
+  .progress-label { font-size: 11px; color: var(--fg-dim); margin-top: 2px; text-align: right; }
+  button.btn {
+    background: var(--bg-input); color: var(--fg); border: 1px solid var(--border);
+    padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    transition: background 0.15s;
+  }
+  button.btn:hover { background: var(--border); }
+  h1.title { font-size: 28px; margin: 0 0 8px; font-weight: 700; }
+  p.subtitle { color: var(--fg-dim); margin: 0 0 24px; font-size: 14px; }
+  .architecture {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; margin-bottom: 24px;
+  }
+  .architecture h2 { margin: 0 0 16px; font-size: 16px; color: var(--accent); }
+  .arch-svg { width: 100%; max-width: 100%; height: auto; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px; font-size: 12px; color: var(--fg-dim); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  .step {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    margin-bottom: 16px; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .step.done { border-color: var(--success); }
+  .step-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 20px; cursor: pointer;
+    user-select: none;
+  }
+  .step-header:hover { background: rgba(255,255,255,0.02); }
+  [data-theme="light"] .step-header:hover { background: rgba(0,0,0,0.02); }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--bg-input);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 13px; flex-shrink: 0;
+    border: 1px solid var(--border);
+  }
+  .step.done .step-num { background: var(--success); color: white; border-color: var(--success); }
+  .step.done .step-num::before { content: "✓"; }
+  .step.done .step-num span { display: none; }
+  .step-title { flex: 1; font-weight: 600; font-size: 15px; }
+  .step-time { font-size: 12px; color: var(--fg-dim); }
+  .step-chevron { color: var(--fg-dim); transition: transform 0.2s; font-size: 18px; }
+  .step.open .step-chevron { transform: rotate(90deg); }
+  .step-body {
+    display: none; padding: 0 20px 20px 60px;
+  }
+  .step.open .step-body { display: block; }
+  .step-body p { margin: 8px 0; }
+  .step-body h4 { margin: 16px 0 8px; font-size: 14px; color: var(--accent-2); }
+  .step-body ul, .step-body ol { padding-left: 20px; }
+  .step-body li { margin: 4px 0; }
+  .checklist { list-style: none; padding: 0; margin: 12px 0; }
+  .checklist li {
+    display: flex; align-items: flex-start; gap: 10px; padding: 6px 0;
+  }
+  .checklist input[type="checkbox"] {
+    width: 16px; height: 16px; margin-top: 4px; cursor: pointer; accent-color: var(--success);
+  }
+  .checklist label { cursor: pointer; flex: 1; }
+  .checklist input[type="checkbox"]:checked + label { color: var(--fg-dim); text-decoration: line-through; }
+  .code-block {
+    position: relative; background: var(--bg-code); border: 1px solid var(--border);
+    border-radius: 8px; margin: 10px 0; overflow: hidden;
+  }
+  .code-block pre {
+    margin: 0; padding: 14px 16px; padding-right: 80px;
+    font-family: "SF Mono", Consolas, "Liberation Mono", monospace;
+    font-size: 13px; overflow-x: auto; line-height: 1.5;
+    color: var(--fg);
+  }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--bg-input); color: var(--fg); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    opacity: 0.7; transition: opacity 0.15s;
+  }
+  .code-block:hover .copy-btn { opacity: 1; }
+  .copy-btn.copied { background: var(--success); color: white; border-color: var(--success); }
+  .callout {
+    margin: 12px 0; padding: 12px 14px; border-radius: 8px;
+    border-left: 3px solid var(--accent);
+    background: rgba(88, 166, 255, 0.08);
+    font-size: 14px;
+  }
+  .callout.warning { border-left-color: var(--warning); background: rgba(210, 153, 34, 0.08); }
+  .callout.danger { border-left-color: var(--danger); background: rgba(248, 81, 73, 0.08); }
+  .callout.success { border-left-color: var(--success); background: rgba(63, 185, 80, 0.08); }
+  .callout strong { display: block; margin-bottom: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .callout.warning strong { color: var(--warning); }
+  .callout.danger strong { color: var(--danger); }
+  .callout.success strong { color: var(--success); }
+  .callout.info strong, .callout strong { color: var(--accent); }
+  kbd {
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 4px;
+    padding: 2px 6px; font-family: "SF Mono", Consolas, monospace; font-size: 12px;
+  }
+  code.inline {
+    background: var(--bg-code); padding: 2px 6px; border-radius: 4px;
+    font-family: "SF Mono", Consolas, monospace; font-size: 13px;
+    border: 1px solid var(--border);
+  }
+  a { color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-input); font-weight: 600; }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 500;
+    background: var(--bg-input); border: 1px solid var(--border);
+  }
+  .pill.green { background: rgba(63, 185, 80, 0.15); color: var(--success); border-color: var(--success); }
+  .pill.blue { background: rgba(88, 166, 255, 0.15); color: var(--accent); border-color: var(--accent); }
+  .pill.amber { background: rgba(210, 153, 34, 0.15); color: var(--warning); border-color: var(--warning); }
+  footer { margin: 40px 0 24px; text-align: center; color: var(--fg-dim); font-size: 12px; }
+  .reset-btn { color: var(--danger); background: transparent; border: 1px solid var(--danger); }
+  .reset-btn:hover { background: rgba(248, 81, 73, 0.1); }
+  @media print {
+    header { position: static; }
+    .step-body { display: block !important; }
+    .copy-btn, .reset-btn, button.btn { display: none; }
+  }
+</style>
+</head>
+<body data-theme="dark">
+
+<header>
+  <h1>Gressio Alpha Deployment Guide</h1>
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div class="progress-label"><span id="progress-count">0</span> of <span id="progress-total">0</span> done</div>
+  </div>
+  <button class="btn" id="theme-toggle" title="Toggle theme">☀️</button>
+  <button class="btn reset-btn" id="reset-btn" title="Clear all progress">Reset</button>
+</header>
+
+<div class="container">
+
+<h1 class="title">Deploy Logto + Gressio-server on your GCP VM</h1>
+<p class="subtitle">Path A — Email/password sign-in only (no Google OAuth yet). Target: <code class="inline">34.21.152.4</code> · 8 GB RAM · existing Docker setup. Estimated total time: 45–90 minutes.</p>
+
+<div class="architecture">
+  <h2>What you're building</h2>
+  <svg class="arch-svg" viewBox="0 0 900 380" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#58a6ff"/>
+      </marker>
+      <marker id="arrow-dim" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#8b949e"/>
+      </marker>
+    </defs>
+    <!-- User -->
+    <g>
+      <rect x="20" y="140" width="120" height="80" rx="8" fill="#1a2028" stroke="#30363d"/>
+      <text x="80" y="170" text-anchor="middle" fill="#e6edf3" font-size="14" font-weight="600">Alpha User</text>
+      <text x="80" y="190" text-anchor="middle" fill="#8b949e" font-size="11">Desktop client</text>
+      <text x="80" y="205" text-anchor="middle" fill="#8b949e" font-size="11">+ Browser</text>
+    </g>
+    <!-- VM box -->
+    <g>
+      <rect x="240" y="40" width="640" height="300" rx="12" fill="none" stroke="#58a6ff" stroke-dasharray="6 4" stroke-width="1.5"/>
+      <text x="260" y="65" fill="#58a6ff" font-size="13" font-weight="600">GCP VM · 34.21.152.4 · 8 GB RAM</text>
+    </g>
+    <!-- Gressio-server -->
+    <g>
+      <rect x="280" y="100" width="200" height="100" rx="8" fill="#1a2028" stroke="#3fb950" stroke-width="2"/>
+      <text x="380" y="130" text-anchor="middle" fill="#3fb950" font-size="13" font-weight="600">Gressio-server</text>
+      <text x="380" y="150" text-anchor="middle" fill="#8b949e" font-size="11">already running</text>
+      <text x="380" y="170" text-anchor="middle" fill="#e6edf3" font-size="12">Port :3000</text>
+      <text x="380" y="187" text-anchor="middle" fill="#8b949e" font-size="11">+ Postgres + Redis</text>
+    </g>
+    <!-- Logto -->
+    <g>
+      <rect x="560" y="100" width="280" height="200" rx="8" fill="#1a2028" stroke="#d29922" stroke-width="2"/>
+      <text x="700" y="125" text-anchor="middle" fill="#d29922" font-size="13" font-weight="600">Logto (NEW)</text>
+      <line x1="580" y1="135" x2="820" y2="135" stroke="#30363d"/>
+      <text x="700" y="158" text-anchor="middle" fill="#e6edf3" font-size="12">Core (OIDC) · :3001</text>
+      <text x="700" y="175" text-anchor="middle" fill="#8b949e" font-size="11">issuer + auth/token endpoints</text>
+      <text x="700" y="208" text-anchor="middle" fill="#e6edf3" font-size="12">Admin Console · :3002</text>
+      <text x="700" y="225" text-anchor="middle" fill="#8b949e" font-size="11">browser-based admin UI</text>
+      <text x="700" y="258" text-anchor="middle" fill="#e6edf3" font-size="12">Postgres (own)</text>
+      <text x="700" y="275" text-anchor="middle" fill="#8b949e" font-size="11">separate container</text>
+    </g>
+    <!-- Arrows -->
+    <line x1="145" y1="170" x2="275" y2="150" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="180" y="142" fill="#58a6ff" font-size="10">API calls</text>
+    <line x1="145" y1="195" x2="555" y2="160" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="320" y="195" fill="#58a6ff" font-size="10">OIDC sign-in (browser)</text>
+    <line x1="485" y1="150" x2="555" y2="150" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-dim)"/>
+    <text x="495" y="142" fill="#8b949e" font-size="10">token verify</text>
+  </svg>
+  <div class="legend">
+    <span><i style="background:#3fb950"></i>Existing — no changes needed</span>
+    <span><i style="background:#d29922"></i>New — you'll deploy this</span>
+    <span><i style="background:#58a6ff"></i>HTTP traffic</span>
+  </div>
+</div>
+
+<div class="callout warning">
+  <strong>Alpha-only scope</strong>
+  This guide uses plain HTTP, raw IP, default Docker passwords, and no domain. <strong>Do not invite real customers</strong> with this setup. It's for you and a handful of trusted alpha testers. Hardening (HTTPS, domain, Cloud SQL, secrets manager) is a separate step before any wider rollout.
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 1 -->
+<!-- ============================================================ -->
+<div class="step" id="step-1">
+  <div class="step-header" onclick="toggleStep('step-1')">
+    <div class="step-num"><span>1</span></div>
+    <div class="step-title">Pre-flight: confirm the VM and Gressio-server</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Before touching anything, SSH in and verify the existing setup is healthy. If the old Gressio-server is broken, we want to know <em>now</em>, not after we've added Logto on top.</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>gcloud compute ssh &lt;your-vm-name&gt; --zone=&lt;your-zone&gt;
+# or: ssh your-user@34.21.152.4</pre>
+    </div>
+    <p>Once inside:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cd ~/transwork-server   # adjust path if different
+docker compose ps        # all services should be "running" / "healthy"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+df -h /                  # confirm at least ~5 GB free
+free -h                  # confirm at least ~2 GB free RAM</pre>
+    </div>
+    <div class="callout">
+      <strong>Why this matters</strong>
+      Logto + its Postgres need ~1 GB RAM and ~500 MB disk. With 8 GB and Gressio-server already running, you've got plenty of room — but a quick check now avoids the "out of memory" surprise mid-deploy.
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c1-1"><label for="c1-1">SSH into the VM successfully</label></li>
+      <li><input type="checkbox" id="c1-2"><label for="c1-2">Existing Gressio-server containers all show "running"</label></li>
+      <li><input type="checkbox" id="c1-3"><label for="c1-3">At least 5 GB free disk, 2 GB free RAM</label></li>
+      <li><input type="checkbox" id="c1-4"><label for="c1-4">You can reach <code class="inline">http://34.21.152.4:3000</code> in your browser and see the Gressio dashboard</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 2 -->
+<!-- ============================================================ -->
+<div class="step" id="step-2">
+  <div class="step-header" onclick="toggleStep('step-2')">
+    <div class="step-num"><span>2</span></div>
+    <div class="step-title">Open GCP firewall ports 3001 and 3002</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Logto runs on two ports: <span class="pill blue">:3001</span> for the OIDC endpoints (the browser hits this during sign-in) and <span class="pill blue">:3002</span> for the admin console. Both need to be reachable from your laptop.</p>
+    <p>Open the GCP Console → <strong>VPC network → Firewall</strong>, or use gcloud:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>gcloud compute firewall-rules create allow-logto-alpha \
+  --direction=INGRESS \
+  --action=ALLOW \
+  --rules=tcp:3001,tcp:3002 \
+  --source-ranges=0.0.0.0/0 \
+  --description="Logto core (3001) + admin (3002) for alpha"</pre>
+    </div>
+    <div class="callout warning">
+      <strong>Tighten this later</strong>
+      <code class="inline">0.0.0.0/0</code> means "anyone on the internet." That's fine for alpha — Logto's admin is password-protected and the OIDC endpoints need to be public anyway. But before public launch, restrict <code class="inline">:3002</code> (admin) to your home/office IP only.
+    </div>
+    <p>Find your home IP at <a href="https://whatismyipaddress.com" target="_blank" rel="noopener">whatismyipaddress.com</a> if you want to tighten it now:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre># Optional: admin port restricted to your IP only
+gcloud compute firewall-rules create allow-logto-admin \
+  --direction=INGRESS --action=ALLOW \
+  --rules=tcp:3002 \
+  --source-ranges=YOUR.HOME.IP.HERE/32</pre>
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c2-1"><label for="c2-1">Firewall rule created (ports 3001 + 3002 open)</label></li>
+      <li><input type="checkbox" id="c2-2"><label for="c2-2">Verified rule is active: <code class="inline">gcloud compute firewall-rules list</code></label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 3 -->
+<!-- ============================================================ -->
+<div class="step" id="step-3">
+  <div class="step-header" onclick="toggleStep('step-3')">
+    <div class="step-num"><span>3</span></div>
+    <div class="step-title">Stand up Logto via Docker Compose</div>
+    <div class="step-time">~10 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Logto gets its own directory and its own dedicated Postgres — completely separate from Gressio-server's Postgres. This keeps the two schemas independent and means an upgrade to one can't break the other.</p>
+    <p>On the VM:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>sudo mkdir -p /opt/logto
+sudo chown $USER:$USER /opt/logto
+cd /opt/logto</pre>
+    </div>
+    <p>Create <code class="inline">docker-compose.yml</code>:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cat &gt; docker-compose.yml &lt;&lt;'EOF'
+services:
+  logto:
+    image: svhd/logto:latest
+    container_name: logto
+    restart: unless-stopped
+    depends_on:
+      logto-postgres:
+        condition: service_healthy
+    ports:
+      - "3001:3001"   # Core / OIDC endpoints
+      - "3002:3002"   # Admin Console
+    environment:
+      TRUST_PROXY_HEADER: 1
+      DB_URL: postgres://logto:CHANGE_ME_DB_PASS@logto-postgres:5432/logto
+      ENDPOINT: http://34.21.152.4:3001
+      ADMIN_ENDPOINT: http://34.21.152.4:3002
+    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
+
+  logto-postgres:
+    image: postgres:16-alpine
+    container_name: logto-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: logto
+      POSTGRES_PASSWORD: CHANGE_ME_DB_PASS
+      POSTGRES_DB: logto
+    volumes:
+      - logto_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logto -d logto"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  logto_pgdata:
+EOF</pre>
+    </div>
+    <div class="callout danger">
+      <strong>Replace the password</strong>
+      Search/replace <code class="inline">CHANGE_ME_DB_PASS</code> with a strong random string (<code class="inline">openssl rand -hex 24</code>) in both places. The Logto Postgres is internal-only (not exposed to the host), but rotating the default still matters in case you later expose it for debugging.
+    </div>
+    <p>Generate a password and bring it up:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>PASS=$(openssl rand -hex 24)
+sed -i "s/CHANGE_ME_DB_PASS/$PASS/g" docker-compose.yml
+
+docker compose up -d
+docker compose logs -f logto    # Ctrl-C once you see "Core app is running at http://localhost:3001"</pre>
+    </div>
+    <div class="callout">
+      <strong>Why the explicit <code class="inline">ENDPOINT</code> env vars?</strong>
+      Logto generates OIDC discovery URLs (issuer, jwks_uri, etc.) using <code class="inline">ENDPOINT</code>. If you don't set it, Logto advertises <code class="inline">http://localhost:3001</code> in its <code class="inline">.well-known/openid-configuration</code>, and the browser-side redirect to <code class="inline">localhost</code> fails on your laptop. Setting it to the VM's public IP makes the discovery doc consistent.
+    </div>
+    <p>Smoke-test from your laptop:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>curl http://34.21.152.4:3001/oidc/.well-known/openid-configuration | head
+# Should return JSON with "issuer": "http://34.21.152.4:3001"</pre>
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c3-1"><label for="c3-1"><code class="inline">/opt/logto/docker-compose.yml</code> created with a strong password</label></li>
+      <li><input type="checkbox" id="c3-2"><label for="c3-2">Both containers <code class="inline">logto</code> and <code class="inline">logto-postgres</code> running</label></li>
+      <li><input type="checkbox" id="c3-3"><label for="c3-3">OIDC discovery URL returns JSON with the correct issuer</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 4 -->
+<!-- ============================================================ -->
+<div class="step" id="step-4">
+  <div class="step-header" onclick="toggleStep('step-4')">
+    <div class="step-num"><span>4</span></div>
+    <div class="step-title">First-time Logto admin setup</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Open the admin console in your browser:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>http://34.21.152.4:3002</pre>
+    </div>
+    <p>Logto walks you through a first-run wizard:</p>
+    <ol>
+      <li>Click <strong>Create account</strong>.</li>
+      <li>Pick a username (this is the <em>Logto admin</em> username, not your Gressio users). Save it in your password manager.</li>
+      <li>Pick a strong password. Save it.</li>
+      <li>Logto may ask a few questions ("how will you use Logto?", "what languages?"). Answer or skip — doesn't affect functionality.</li>
+    </ol>
+    <div class="callout warning">
+      <strong>This admin account is the master key</strong>
+      Whoever has it can change every sign-in setting and see all users. Treat it like a root password — long, unique, in a vault, no sharing.
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c4-1"><label for="c4-1">Logto admin account created</label></li>
+      <li><input type="checkbox" id="c4-2"><label for="c4-2">Credentials saved in password manager</label></li>
+      <li><input type="checkbox" id="c4-3"><label for="c4-3">You can see the Logto dashboard ("Get started" page)</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 5 -->
+<!-- ============================================================ -->
+<div class="step" id="step-5">
+  <div class="step-header" onclick="toggleStep('step-5')">
+    <div class="step-num"><span>5</span></div>
+    <div class="step-title">Register Gressio-server as a Logto application</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>In the Logto admin, go to <strong>Applications</strong> → <strong>Create application</strong>.</p>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Application type</td><td><span class="pill blue">Traditional web</span> (the Gressio-server does server-side OIDC token exchange)</td></tr>
+        <tr><td>Application name</td><td><code class="inline">Gressio Server (alpha)</code></td></tr>
+      </tbody>
+    </table>
+    <p>After creation, configure these fields:</p>
+    <h4>Redirect URIs</h4>
+    <p>Add <strong>both</strong> of these (one per line):</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>http://127.0.0.1:3000/api/desktop-login/callback
+http://34.21.152.4:3000/oauth/oidc</pre>
+    </div>
+    <ul>
+      <li>The first is for the <strong>desktop client</strong> — its local Tauri server picks up the OAuth code after Logto redirects.</li>
+      <li>The second is for the <strong>web dashboard</strong> (Gressio-server's built-in UI) if any alpha user signs in via browser.</li>
+    </ul>
+    <h4>Post sign-out redirect URIs</h4>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>http://127.0.0.1:3000/
+http://34.21.152.4:3000/</pre>
+    </div>
+    <h4>Save these for the next step</h4>
+    <p>Copy these into a temporary scratch pad — you'll paste them into Gressio-server in step 7:</p>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c5-1"><label for="c5-1"><strong>App ID</strong> (sometimes called "Client ID") — looks like <code class="inline">xz5kqz8...</code></label></li>
+      <li><input type="checkbox" id="c5-2"><label for="c5-2"><strong>App Secret</strong> (sometimes called "Client Secret") — long random string</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 6 -->
+<!-- ============================================================ -->
+<div class="step" id="step-6">
+  <div class="step-header" onclick="toggleStep('step-6')">
+    <div class="step-num"><span>6</span></div>
+    <div class="step-title">Configure the sign-up flow (email-only, no username)</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>This is the fix for the "young white" username prompt that bugged you. We're telling Logto: <em>at sign-up, ask only for email + password — no username, no Google, no anything else.</em></p>
+    <p>In the Logto admin: <strong>Sign-in experience</strong> → <strong>Sign-up and sign-in</strong>.</p>
+    <h4>Sign-up</h4>
+    <table>
+      <tbody>
+        <tr><td>Sign-up identifier</td><td><span class="pill green">Email address</span> (uncheck Username if it's selected)</td></tr>
+        <tr><td>Authentication</td><td><span class="pill green">Create your password</span></td></tr>
+        <tr><td>Verify at sign-up</td><td>Either is fine for alpha. If you don't have an SMTP server set up yet, leave email verification OFF.</td></tr>
+      </tbody>
+    </table>
+    <h4>Sign-in</h4>
+    <table>
+      <tbody>
+        <tr><td>Sign-in identifier</td><td><span class="pill green">Email address</span> · authentication: <span class="pill green">Password</span></td></tr>
+        <tr><td>Social sign-in</td><td><strong>Empty</strong> — no Google connector for now (Path A)</td></tr>
+      </tbody>
+    </table>
+    <p>Click <strong>Save changes</strong> at the bottom.</p>
+    <div class="callout success">
+      <strong>What this fixes</strong>
+      New alpha users hitting Logto will now see one screen: "enter your email and password." No username field. No Google button. That's the entire registration friction.
+    </div>
+    <h4>Optional: pre-create a test user</h4>
+    <p>While you're in the admin, go to <strong>User management</strong> → <strong>Add user</strong>. Create one with your own email — useful for the smoke test in step 9 without going through public sign-up.</p>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c6-1"><label for="c6-1">Sign-up identifier set to Email only (username unchecked)</label></li>
+      <li><input type="checkbox" id="c6-2"><label for="c6-2">No social connectors enabled</label></li>
+      <li><input type="checkbox" id="c6-3"><label for="c6-3">Settings saved</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 7 -->
+<!-- ============================================================ -->
+<div class="step" id="step-7">
+  <div class="step-header" onclick="toggleStep('step-7')">
+    <div class="step-num"><span>7</span></div>
+    <div class="step-title">Point Gressio-server at Logto (OIDC settings)</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>Open Gressio-server's admin dashboard:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>http://34.21.152.4:3000</pre>
+    </div>
+    <p>Log in as the existing Gressio root admin. Then navigate: <strong>Settings → System Settings → OAuth → OIDC</strong> (or in the Chinese UI: <strong>系统设置 → OIDC 登录</strong>).</p>
+    <p>Fill in:</p>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Enable OIDC</td><td><span class="pill green">ON</span></td></tr>
+        <tr><td>Client ID</td><td><em>(paste from step 5)</em></td></tr>
+        <tr><td>Client Secret</td><td><em>(paste from step 5)</em></td></tr>
+        <tr><td>Authorization Endpoint</td><td><code class="inline">http://34.21.152.4:3001/oidc/auth</code></td></tr>
+        <tr><td>Token Endpoint</td><td><code class="inline">http://34.21.152.4:3001/oidc/token</code></td></tr>
+        <tr><td>UserInfo Endpoint</td><td><code class="inline">http://34.21.152.4:3001/oidc/me</code></td></tr>
+        <tr><td>Scopes</td><td><code class="inline">openid profile email</code></td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <strong>Shortcut if your admin UI has a "Discovery" button</strong>
+      Newer versions of Gressio-server's OIDC settings can auto-fill these endpoints from the discovery URL <code class="inline">http://34.21.152.4:3001/oidc/.well-known/openid-configuration</code>. If you see a "Fetch from discovery" or "自动发现" button, paste that URL and click it instead of typing the three endpoints by hand.
+    </div>
+    <p>Click <strong>Save</strong>.</p>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c7-1"><label for="c7-1">OIDC enabled in Gressio-server admin</label></li>
+      <li><input type="checkbox" id="c7-2"><label for="c7-2">Client ID + Secret pasted (no leading/trailing whitespace)</label></li>
+      <li><input type="checkbox" id="c7-3"><label for="c7-3">All three endpoints filled</label></li>
+      <li><input type="checkbox" id="c7-4"><label for="c7-4">Settings saved</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 8 -->
+<!-- ============================================================ -->
+<div class="step" id="step-8">
+  <div class="step-header" onclick="toggleStep('step-8')">
+    <div class="step-num"><span>8</span></div>
+    <div class="step-title">Pull the latest Gressio-server code and redeploy</div>
+    <div class="step-time">~5–10 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>The VM has an older version. Recent commits added desktop OIDC support and the <code class="inline">max=20</code> username/displayName fix. Pull and rebuild:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cd ~/transwork-server
+git fetch origin
+git log HEAD..origin/main --oneline    # preview what's coming in
+git pull origin main</pre>
+    </div>
+    <p>Rebuild the image and restart, using the Gressio overlay (matches what's documented in <code class="inline">transwork/transwork.env.example</code>):</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>docker compose \
+  --env-file transwork/transwork.env \
+  -f docker-compose.yml \
+  -f transwork/docker-compose.transwork.yml \
+  up -d --build</pre>
+    </div>
+    <div class="callout warning">
+      <strong>Existing data is preserved</strong>
+      The Postgres volume (<code class="inline">pg_data</code>) is unaffected by a rebuild. Your existing users, channels, tokens, billing config all stay. If you're nervous, snapshot the volume first: <code class="inline">docker run --rm -v transwork-server_pg_data:/data -v $(pwd):/backup alpine tar czf /backup/pg-backup-$(date +%F).tar.gz /data</code>
+    </div>
+    <p>Watch logs for a clean startup:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>docker compose logs -f new-api    # Ctrl-C once you see "Server started at :3000"</pre>
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c8-1"><label for="c8-1"><code class="inline">git pull</code> succeeded</label></li>
+      <li><input type="checkbox" id="c8-2"><label for="c8-2">Docker rebuild completed without errors</label></li>
+      <li><input type="checkbox" id="c8-3"><label for="c8-3">All containers showing "running" again</label></li>
+      <li><input type="checkbox" id="c8-4"><label for="c8-4"><code class="inline">http://34.21.152.4:3000</code> loads the dashboard</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 9 -->
+<!-- ============================================================ -->
+<div class="step" id="step-9">
+  <div class="step-header" onclick="toggleStep('step-9')">
+    <div class="step-num"><span>9</span></div>
+    <div class="step-title">Update the desktop client and run the end-to-end test</div>
+    <div class="step-time">~10 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <p>The desktop client (<code class="inline">transwork/</code> repo) needs to know about the production server URL. Depending on how the client reads it:</p>
+    <ul>
+      <li><strong>If hard-coded in <code class="inline">src/lib/api.ts</code></strong>: change the base URL to <code class="inline">http://34.21.152.4:3000</code>, rebuild the installer (<code class="inline">npm run tauri build</code>).</li>
+      <li><strong>If user-configurable in Settings</strong>: just change it in the running app.</li>
+      <li><strong>If read from an env file at build time</strong>: update that file and rebuild.</li>
+    </ul>
+    <h4>Test flow</h4>
+    <ol>
+      <li>Open the (updated) desktop client.</li>
+      <li>Click <strong>Sign in with OIDC</strong> (or whatever your sign-in button says).</li>
+      <li>System browser opens to <code class="inline">http://34.21.152.4:3001/oidc/auth?...</code> → Logto sign-in screen.</li>
+      <li>Click <strong>Create account</strong>. Enter email + password. Submit.</li>
+      <li>Browser redirects to <code class="inline">http://127.0.0.1:3000/api/desktop-login/callback?code=...</code> → desktop client picks it up.</li>
+      <li>Desktop client window comes to the front, signed in.</li>
+      <li>Click the profile pop-up — it should show the email you just used.</li>
+    </ol>
+    <div class="callout success">
+      <strong>Bonus verification</strong>
+      Back in Logto admin → <strong>User management</strong>, you should see the new user row with the email you just used and no username field populated. In Gressio-server admin → <strong>Users</strong>, the same user should appear with an auto-generated username like <code class="inline">oidc_a1b2c3d4...</code> and the email filled in. That's expected — the desktop login handler auto-generates the username, since you removed the prompt in step 6.
+    </div>
+    <h4>If something breaks</h4>
+    <table>
+      <thead><tr><th>Symptom</th><th>Check</th></tr></thead>
+      <tbody>
+        <tr><td>"Connection refused" when browser hits :3001</td><td>Firewall rule from step 2 didn't apply; <code class="inline">gcloud compute firewall-rules list</code></td></tr>
+        <tr><td>"Invalid redirect URI"</td><td>Step 5 — the exact URI in the request must be one of the URIs you registered, character-for-character</td></tr>
+        <tr><td>Logto sign-in works but loops back / no user created in Gressio</td><td>Step 7 — Client Secret has invisible whitespace, or endpoint URLs typo'd. Re-check.</td></tr>
+        <tr><td>Logs show "discovery doc points to localhost"</td><td>Step 3 — <code class="inline">ENDPOINT</code> env var wasn't picked up. <code class="inline">docker compose down &amp;&amp; docker compose up -d</code> to reload it.</td></tr>
+      </tbody>
+    </table>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c9-1"><label for="c9-1">Desktop client points at production server URL</label></li>
+      <li><input type="checkbox" id="c9-2"><label for="c9-2">Sign-up flow completes end-to-end</label></li>
+      <li><input type="checkbox" id="c9-3"><label for="c9-3">Profile pop-up shows your email</label></li>
+      <li><input type="checkbox" id="c9-4"><label for="c9-4">User row visible in both Logto and Gressio admin</label></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STEP 10 -->
+<!-- ============================================================ -->
+<div class="step" id="step-10">
+  <div class="step-header" onclick="toggleStep('step-10')">
+    <div class="step-num"><span>10</span></div>
+    <div class="step-title">Backup, logs, and "what's next"</div>
+    <div class="step-time">~5 min</div>
+    <div class="step-chevron">›</div>
+  </div>
+  <div class="step-body">
+    <h4>Daily backups (set this up before inviting any alpha user)</h4>
+    <p>Two Postgres volumes to back up: <code class="inline">transwork-server_pg_data</code> (users, channels, billing) and <code class="inline">logto_logto_pgdata</code> (auth identities). A simple cron job:</p>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre>cat &gt; /opt/backup.sh &lt;&lt;'EOF'
+#!/bin/bash
+set -e
+DEST=/opt/backups
+mkdir -p $DEST
+DATE=$(date +%F-%H%M)
+docker exec postgres pg_dumpall -U root | gzip &gt; $DEST/transwork-$DATE.sql.gz
+docker exec logto-postgres pg_dumpall -U logto | gzip &gt; $DEST/logto-$DATE.sql.gz
+# Keep last 14 days
+find $DEST -name "*.sql.gz" -mtime +14 -delete
+EOF
+chmod +x /opt/backup.sh
+
+# Run daily at 03:00
+(crontab -l 2&gt;/dev/null; echo "0 3 * * * /opt/backup.sh") | crontab -</pre>
+    </div>
+    <h4>Watching logs</h4>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      <pre># Gressio-server
+cd ~/transwork-server &amp;&amp; docker compose logs -f --tail=100 new-api
+
+# Logto
+cd /opt/logto &amp;&amp; docker compose logs -f --tail=100 logto</pre>
+    </div>
+    <h4>What to do <em>after</em> alpha goes well</h4>
+    <p>When you're ready to harden this for real users, these are the next steps (each is its own mini-project):</p>
+    <ol>
+      <li><strong>Get a domain</strong> ($1–3/year on Cloudflare). Point an A record at <code class="inline">34.21.152.4</code>.</li>
+      <li><strong>Add Caddy as a reverse proxy</strong> in front of both services. Auto-issues Let's Encrypt certs. Now both endpoints are HTTPS.</li>
+      <li><strong>Enable Google login</strong> in Logto: add the Google connector, register the OAuth client in Google Cloud Console using your new domain.</li>
+      <li><strong>Restrict Logto admin port (3002)</strong> to your IP only.</li>
+      <li><strong>Move to Cloud SQL</strong> once you have more than ~20 users — managed backups, no VM disk pressure.</li>
+      <li><strong>Static external IP</strong> if you haven't already, so the VM IP doesn't change after a reboot.</li>
+    </ol>
+    <div class="callout">
+      <strong>Reach out for the hardening pass</strong>
+      Each of those steps is small — domain + Caddy is ~30 minutes, Google login is ~15 minutes once Caddy is in place. Tackle them after alpha confirms the product idea is worth investing in.
+    </div>
+    <h4>Checklist</h4>
+    <ul class="checklist">
+      <li><input type="checkbox" id="c10-1"><label for="c10-1">Backup script created and cron scheduled</label></li>
+      <li><input type="checkbox" id="c10-2"><label for="c10-2">Bookmarked log commands for quick access</label></li>
+      <li><input type="checkbox" id="c10-3"><label for="c10-3">Decided when you'll do the hardening pass</label></li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Generated for Gressio alpha deployment · target <code class="inline">34.21.152.4</code> · Path A (email/password only). Progress is saved in your browser's localStorage — switching browsers resets it.
+</footer>
+
+</div>
+
+<script>
+  const STORAGE_KEY = "transwork-alpha-guide-v1";
+
+  function loadState() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
+    catch { return {}; }
+  }
+  function saveState(s) { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+  const state = loadState();
+
+  function toggleStep(id) {
+    const el = document.getElementById(id);
+    el.classList.toggle("open");
+    state[id + "_open"] = el.classList.contains("open");
+    saveState(state);
+  }
+
+  function updateProgress() {
+    const checks = document.querySelectorAll('.checklist input[type="checkbox"]');
+    const done = Array.from(checks).filter(c => c.checked).length;
+    const pct = checks.length ? (done / checks.length) * 100 : 0;
+    document.getElementById("progress").style.width = pct + "%";
+    document.getElementById("progress-count").textContent = done;
+    document.getElementById("progress-total").textContent = checks.length;
+
+    // Mark step as done if all its checks are done
+    document.querySelectorAll(".step").forEach(step => {
+      const stepChecks = step.querySelectorAll('.checklist input[type="checkbox"]');
+      if (stepChecks.length === 0) return;
+      const allDone = Array.from(stepChecks).every(c => c.checked);
+      step.classList.toggle("done", allDone);
+    });
+  }
+
+  function copyCode(btn) {
+    const pre = btn.parentElement.querySelector("pre");
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+      const old = btn.textContent;
+      btn.textContent = "Copied!";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = old; btn.classList.remove("copied"); }, 1200);
+    });
+  }
+
+  // Wire up checkboxes
+  document.querySelectorAll('.checklist input[type="checkbox"]').forEach(cb => {
+    if (state[cb.id]) cb.checked = true;
+    cb.addEventListener("change", () => {
+      state[cb.id] = cb.checked;
+      saveState(state);
+      updateProgress();
+    });
+  });
+
+  // Restore step open/closed state
+  document.querySelectorAll(".step").forEach(step => {
+    if (state[step.id + "_open"]) step.classList.add("open");
+  });
+  // Open step 1 by default on first visit
+  if (Object.keys(state).length === 0) {
+    document.getElementById("step-1").classList.add("open");
+  }
+
+  // Theme toggle
+  const themeBtn = document.getElementById("theme-toggle");
+  function applyTheme(t) {
+    document.body.dataset.theme = t;
+    themeBtn.textContent = t === "dark" ? "☀️" : "🌙";
+    state.theme = t;
+    saveState(state);
+  }
+  applyTheme(state.theme || "dark");
+  themeBtn.addEventListener("click", () => applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark"));
+
+  // Reset
+  document.getElementById("reset-btn").addEventListener("click", () => {
+    if (confirm("Clear all progress and collapse all sections?")) {
+      localStorage.removeItem(STORAGE_KEY);
+      location.reload();
+    }
+  });
+
+  updateProgress();
+</script>
+
+</body>
+</html>
