@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { TRANSWORK_SOURCE_URL } from '@/transwork/brand'
 
 interface FooterLink {
   text: string
@@ -73,6 +74,15 @@ function ProjectAttribution(props: { currentYear: number }) {
         </a>
         . {t(NEW_API_FOOTER_ATTRIBUTION_KEY)}
       </span>
+      {' · '}
+      <a
+        href={TRANSWORK_SOURCE_URL}
+        target='_blank'
+        rel='noopener noreferrer'
+        className='text-foreground/70 hover:text-foreground font-medium transition-colors'
+      >
+        {t('footer.sourceCode')}
+      </a>
     </div>
   )
 }
