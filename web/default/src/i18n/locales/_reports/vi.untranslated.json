@@ -1,0 +1,9 @@
+{
+  "Base input and output token prices for this tier.": "Base input and output token prices for this tier.",
+  "Each tier supports up to 2 conditions. The last tier without conditions is the fallback.": "Each tier supports up to 2 conditions. The last tier without conditions is the fallback.",
+  "Show the Subscribe / Manage subscription options in the Gressio desktop client (requires a configured Stripe secret key).": "Show the Subscribe / Manage subscription options in the Gressio desktop client (requires a configured Stripe secret key).",
+  "One-time starter credit granted to users who continue without an invite code.": "One-time starter credit granted to users who continue without an invite code.",
+  "Set separate prices for cache reads and writes.": "Set separate prices for cache reads and writes.",
+  "Show the Recharge button in the Gressio desktop client (requires a configured payment provider).": "Show the Recharge button in the Gressio desktop client (requires a configured payment provider).",
+  "When on, new users can skip the invite code and receive free starter credit.": "When on, new users can skip the invite code and receive free starter credit."
+}

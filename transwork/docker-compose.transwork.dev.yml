@@ -1,0 +1,12 @@
+services:
+  new-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: ${IMAGE_TAG:-transwork-server-dev:local}
+    volumes:
+      - ${TRANSWORK_GCS_KEY_PATH:-./key.json}:/app/key.json:ro
+    environment:
+      - GCS_CREDENTIALS_PATH=/app/key.json
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
