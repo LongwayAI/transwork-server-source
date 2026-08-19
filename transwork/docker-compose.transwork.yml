@@ -1,0 +1,114 @@
+# Cap Docker's own capture of container stdout. The json-file driver is the daemon
+# default and, with no options, it NEVER rotates: the app's logger writes every line
+# twice (io.MultiWriter to ./logs *and* to stdout, logger/logger.go), Docker keeps the
+# stdout copy in /var/lib/docker/containers/<id>/<id>-json.log, and that file only ever
+# grows. On the production VM it reached ~3.8 GB on a 20 GB boot disk and pushed the
+# host to 98% full, at which point the perf-monitor middleware started returning
+# system_disk_overloaded (503) on every /v1 relay call and every desktop client hung.
+#
+# 100m x 3 caps each container at ~300 MB of daemon-side logs (~900 MB for the three
+# services here), which is a bounded, survivable share of a 20 GB disk.
+#
+# This lives in the overlay rather than in the upstream docker-compose.yml per the
+# upstream-first rule: `logging` merges cleanly per service across `-f` files, and
+# upstream declares none, so the overlay's block simply applies. redis and postgres
+# are named here only to carry this key -- their image/config still come from the
+# base file, so this overlay is still not runnable on its own.
+#
+# NOTE: log-driver options are fixed at container CREATE time. `restart` will not pick
+# them up; the containers must be recreated (`up -d`), and any already-oversized
+# json log has to be truncated on the host separately.
+x-json-log-rotation: &json-log-rotation
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+services:
+  new-api:
+    logging: *json-log-rotation
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_TAG:-transwork-server:latest}
+    # How long Docker waits after SIGTERM before SIGKILL. Must exceed the app's own
+    # shutdown budget -- SHUTDOWN_DRAIN_TIMEOUT (default 15s) *plus* the ~2s settle
+    # window in transwork/shutdown.go -- or Docker kills the process mid-drain and
+    # we lose the buffered billing counters the graceful path exists to flush. The
+    # 10s Compose default is not enough. This is a ceiling, not a wait: a deploy
+    # with nothing long in flight drains in well under a second and exits
+    # immediately.
+    #
+    # 25s = 15 drain + 2 settle + headroom for the flush itself and for a slow
+    # container under load.
+    #
+    # Interpolated so raising the drain does not require editing this file: an
+    # operator setting SHUTDOWN_DRAIN_TIMEOUT in transwork.env must raise
+    # SHUTDOWN_STOP_GRACE alongside it, keeping grace > drain + settle.
+    stop_grace_period: ${SHUTDOWN_STOP_GRACE:-25s}
+    # Bind to loopback only: nginx on the host terminates TLS and proxies to us. The
+    # upstream file publishes "3000:3000", i.e. 0.0.0.0, which exposed the app to the
+    # internet in cleartext alongside the GCP firewall rule (since removed). !override
+    # replaces the upstream list instead of appending to it, which would double-publish
+    # the port.
+    #
+    # REQUIRES COMPOSE >= 2.24.4 — an older v2 plugin fails to PARSE this file, which
+    # blocks deploys AND rollbacks, not just this binding. Verified on the production VM
+    # (instance-20260317-035022): Docker Compose v5.1.0. Run `docker compose version`
+    # before provisioning a new host.
+    ports: !override
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ${TRANSWORK_GCS_KEY_PATH:-./key.json}:/app/key.json:ro
+      # Relocate the app's own log files (oneapi-*.log) off the boot disk. Compose merges
+      # `volumes` keyed by the container path, so this REPLACES the base file's
+      # `./logs:/app/logs` rather than adding a second mount for the same target.
+      # Defaults to the upstream path so dev and a bare checkout are unchanged; production
+      # sets TRANSWORK_LOG_DIR in transwork.env to a path on the 100GB persistent data disk.
+      # This matters beyond capacity: the perf monitor statfs's the container's TempDir, so
+      # while logs share a filesystem with the fuse, log growth alone 503s every /v1 relay.
+      - ${TRANSWORK_LOG_DIR:-./logs}:/app/logs
+    environment:
+      # nginx on the host proxies to the published port above, so the container sees the
+      # request arriving from the Docker bridge gateway rather than from the real client.
+      # Compose's default address pool is 172.17-172.31, all inside 172.16.0.0/12; pin a
+      # narrower CIDR in transwork.env if the network is fixed. This widening is safe
+      # only because it is paired with the loopback publish above — nothing off this host
+      # can reach the port, so the bridge is the sole possible peer. The application
+      # default stays loopback-only precisely so this cannot leak into other deployments.
+      #
+      # ${VAR-default}, NOT ${VAR:-default}: the colon form substitutes when the variable
+      # is unset OR empty, which would swallow an explicit `TRUSTED_PROXIES=` meaning
+      # "trust nothing" and hand the container the bridge-trusting default instead. Same
+      # unset-vs-empty distinction the Go side makes with os.LookupEnv.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES-127.0.0.1/32,::1/128,172.16.0.0/12}
+      # Mark the session cookie Secure, so a browser will never send it over cleartext
+      # HTTP. This is the Gressio-specific half of the setting: the application default
+      # stays false to preserve upstream's plain-HTTP deployment, and the HTTPS-only
+      # assumption lives here, in the overlay that also terminates at nginx and publishes
+      # on loopback. Without this line the variable in transwork.env would never reach
+      # the container — compose only forwards what a service names.
+      #
+      # ${VAR-default}, NOT ${VAR:-default}, for the same reason as TRUSTED_PROXIES: the
+      # colon form would swallow an explicit `SESSION_COOKIE_SECURE=` meaning "fall back
+      # to the upstream default" and force true instead.
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE-true}
+      # Named here or the container never sees it: compose forwards only what a
+      # service lists, so a value in transwork.env would otherwise be usable for
+      # interpolation above yet invisible to the process, silently pinning the
+      # drain to its default. Raise SHUTDOWN_STOP_GRACE too -- see the
+      # stop_grace_period note above.
+      #
+      # Keep this default equal to defaultDrainSeconds in transwork/shutdown.go:
+      # naming the variable here means compose always supplies a value, so this
+      # literal -- not the Go constant -- is what a default deployment gets.
+      - SHUTDOWN_DRAIN_TIMEOUT=${SHUTDOWN_DRAIN_TIMEOUT-15}
+      - GCS_CREDENTIALS_PATH=/app/key.json
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+
+  redis:
+    logging: *json-log-rotation
+
+  postgres:
+    logging: *json-log-rotation

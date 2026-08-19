@@ -1,0 +1,9 @@
+{
+  "comment": "Single source of truth for Gressio desktop recharge tiers. credits_per_dollar is the standard exchange rate (1 credit = $0.01 => 100). Each tier has a USD price and an optional bonus_pct granted on top of the standard rate. The server grants the bonus on Stripe top-ups and the desktop client renders these tiers verbatim. Edit + rebuild + redeploy the server to change. credits_per_dollar must match the backend QuotaPerUnit-derived rate.",
+  "credits_per_dollar": 100,
+  "tiers": [
+    { "usd": 10, "bonus_pct": 0 },
+    { "usd": 30, "bonus_pct": 5 },
+    { "usd": 100, "bonus_pct": 10 }
+  ]
+}
